@@ -438,7 +438,7 @@ function turned(src,deg){
   var x=c.getContext("2d");try{x.filter="grayscale(1) contrast(1.35)"}catch(e){}
   x.translate(c.width/2,c.height/2);x.rotate(deg*Math.PI/180);x.drawImage(src,-w/2,-h/2);return c}
 function cleanLine(t){
-  return String(t||"").replace(/[·•–—‧∙|]+/g," - ").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
+  return String(t||"").replace(/[·•–—‧∙|]+/g," - ").replace(/(\S)-\s+/g,"$1 - ").replace(/\s+-(\S)/g," - $1").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
 function trimEnds(str){      // drop stray label/junk words at either end of a line, e.g. "americen ME SLAYER - TITLE 8"
   var w=str.split(" ").filter(Boolean),up=w.some(function(x){return /[A-Z]{2,}/.test(x)});
   var junk=function(x){var l=x.replace(/[^A-Za-z]/g,"");return !l||l.length<=2||(up&&/^[a-z]+$/.test(l)&&l.length>=3&&x!==x.toUpperCase())};
