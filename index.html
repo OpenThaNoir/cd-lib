@@ -526,7 +526,7 @@ async function processCover(file){
     mbc.forEach(function(x){if(!cands[x.collectionId])cands[x.collectionId]=x});
     var scored=Object.keys(cands).map(function(id){var x=cands[id],a=toks(x.artistName),t=toks(tidyTitle(x.collectionName));
       var ac=a.length?a.filter(function(w){return covered(w,set)}).length/a.length:0,tc=t.length?t.filter(function(w){return covered(w,set)}).length/t.length:0;
-      return {x:x,s:ac*1.2+tc,ac:ac,tc:tc}}).filter(function(o){return o.s>=.9&&(o.ac>0||o.tc>=1)}).sort(function(a,b){return b.s-a.s}).slice(0,5);
+      return {x:x,s:ac*1.2+tc,ac:ac,tc:tc}}).filter(function(o){return o.s>=.9&&(o.ac>0||o.tc>=1)}).sort(function(a,b){return b.s-a.s||(b.x.mb?0:1)-(a.x.mb?0:1)}).filter(function(o,i,arr){var k=nrm(o.x.artistName)+"|"+nrm(tidyTitle(o.x.collectionName));return arr.findIndex(function(p){return nrm(p.x.artistName)+"|"+nrm(tidyTitle(p.x.collectionName))===k})===i}).slice(0,5);
     scan.cards.push({id:uid(),thumb:thumb,ocr:ls.map(function(l){return l.t}).join(" / "),cands:scored.map(function(o){var x=o.x;return{artist:x.artistName,title:x.collectionName,year:String(x.releaseDate||"").slice(0,4),art:x.mb?"https://coverartarchive.org/release-group/"+x.mb+"/front-250":x.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:x.mb?{m:x.mb}:{i:x.collectionId}}})});
     scan.busy=false;paintCards();
     setSStat(scored.length?"Tap the one that matches your CD.":"I couldn't match that cover. Tap \"None of these\" to type it in.");
