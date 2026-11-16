@@ -84,6 +84,7 @@ html[data-theme="hclight"] .letter{color:#000}
 .toast{position:fixed;left:50%;bottom:calc(1.2rem + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--acc);color:var(--acc-ink);font-weight:700;
   padding:.8rem 1.2rem;border-radius:.8rem;font-size:1.05rem;z-index:30;max-width:92vw;text-align:center;border:var(--bw) solid var(--bg)}
 textarea.field{min-height:7rem;font-family:ui-monospace,Menlo,monospace;font-size:.85rem}
+textarea.tracks{font-family:inherit;font-size:1rem;line-height:1.6;resize:vertical}
 .menu{display:grid;gap:.6rem}
 .menu button.item{display:block;width:100%;text-align:left;padding:.8rem 1rem;background:var(--panel2);border:var(--bw) solid var(--line);border-radius:.7rem;min-height:3.4rem;font-weight:600}
 .opts{display:grid;gap:.5rem}
@@ -147,7 +148,7 @@ async function lookup(term,c){
   var j=await r.json(), hits=(j.results||[]).filter(function(x){return x.artworkUrl100});
   var best=hits.find(function(x){return nrm(x.collectionName)===nrm(c.title)&&close(x.artistName,c.artist)})
         ||hits.find(function(x){return close(x.collectionName,c.title)&&close(x.artistName,c.artist)});
-  return best?best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."):null;
+  return best?{art:best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:best.collectionId}}:null;
 }
 // fallback: MusicBrainz + Cover Art Archive (covers albums missing from Apple's catalog)
 async function mbLookup(c){
@@ -158,14 +159,44 @@ async function mbLookup(c){
     var ac=(x["artist-credit"]||[]).map(function(a){return a.name}).join(" ");
     return nrm(x.title)===nrm(c.title)&&close(ac,c.artist)});
   if(!g)return null;
-  var u="https://coverartarchive.org/release-group/"+g.id+"/front-250";
-  try{var h=await fetch(u);return h.ok?u:null}catch(e){return null}
+  var u="https://coverartarchive.org/release-group/"+g.id+"/front-250",art=null;
+  try{var h=await fetch(u);if(h.ok)art=u}catch(e){}
+  return {art:art,src:{m:g.id}};
 }
-async function fetchArt(c){
+async function fetchArt(c){   // -> {art, src} or null
   var u=await lookup(c.artist+" "+c.title,c);
   if(!u){var t2=c.title.replace(/\(.*?\)|\[.*?\]/g,"").trim();if(t2&&t2!==c.title)u=await lookup(c.artist+" "+t2,c)}
   if(!u)u=await mbLookup(c);
   return u;
+}
+async function getJSON(url){var r=await fetch(url);if(!r.ok)throw new Error("http "+r.status);return r.json()}
+async function fetchTracks(c){   // -> text, one track per line, or null
+  if(!c.src){var f=await fetchArt(c);if(!f)return null;c.src=f.src;if(!c.art&&f.art)c.art=f.art}
+  var lines=[];
+  if(c.src.i){
+    var j=await getJSON("https://itunes.apple.com/lookup?entity=song&limit=200&id="+c.src.i);
+    var tr=(j.results||[]).filter(function(x){return x.wrapperType==="track"&&x.trackName});
+    tr.sort(function(a,b){return (a.discNumber||1)-(b.discNumber||1)||(a.trackNumber||0)-(b.trackNumber||0)});
+    var multi=tr.some(function(x){return (x.discNumber||1)>1});
+    lines=tr.map(function(x){return (multi?(x.discNumber||1)+"-":"")+x.trackNumber+". "+x.trackName});
+  }else if(c.src.m){
+    var m=await getJSON("https://musicbrainz.org/ws/2/release?fmt=json&inc=recordings&limit=1&status=official&release-group="+c.src.m);
+    var rel=(m.releases||[])[0],media=rel?rel.media||[]:[];
+    media.forEach(function(d,di){(d.tracks||[]).forEach(function(t){lines.push((media.length>1?(di+1)+"-":"")+t.position+". "+t.title)})});
+  }
+  return lines.length?lines.join("\n"):null;
+}
+var tBusy={};
+function setTStat(t){var e=document.getElementById("tstat");if(e)e.textContent=t}
+function loadTracks(c,force){
+  if(tBusy[c.id])return;tBusy[c.id]=1;setTStat("Looking up the tracklist…");
+  fetchTracks(c).then(function(t){
+    c.tracksTried=Date.now();
+    if(t){c.tracks=t;var ta=document.querySelector('[data-cd="'+c.id+'"] [data-f=tracks]');if(ta){ta.value=t;ta.rows=Math.min(30,t.split("\n").length+1)}setTStat("")}
+    else setTStat("No tracklist found. You can type one in.");
+    save();paintArt(c);
+  }).catch(function(){setTStat("Couldn't look it up. Check your internet connection.")})
+   .then(function(){delete tBusy[c.id]});
 }
 var artQ=[],artBusy=false,artDown=false;
 function wantArt(list){list.forEach(function(c){if(!c.art&&!c.artTried&&artQ.indexOf(c.id)<0)artQ.push(c.id)});pumpArt()}
@@ -175,7 +206,7 @@ function pumpArt(){
   var c=S.cds.find(function(x){return x.id===artQ[0]});artQ.shift();
   if(!c||c.art||c.artTried){pumpArt();return}
   artBusy=true;
-  fetchArt(c).then(function(u){c.artTried=Date.now();if(u)c.art=u;save();paintArt(c)})
+  fetchArt(c).then(function(r){c.artTried=Date.now();if(r){if(r.art)c.art=r.art;c.src=r.src}save();paintArt(c)})
    .catch(function(){artDown=true;setTimeout(function(){artDown=false;pumpArt()},60000)})   // offline or rate-limited: pause a minute
    .then(function(){setTimeout(function(){artBusy=false;pumpArt()},3500)});                  // stay under Apple's ~20 requests/minute
 }
@@ -197,7 +228,7 @@ function home(){
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="menu" aria-label="Backup and import">Backup</button></div>';
   if(S.cds.length) h+='<input class="search" id="q" type="search" placeholder="Search all CDs…" value="'+esc(ui.q)+'">';
   if(q){
-    var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+c.notes+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
+    var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+(c.tracks||"")+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
     if(!hits.length) h+='<div class="empty"><b>🔍</b>No matches</div>';
     hits.forEach(function(c){var s=shelfById(c.shelf);
       h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></span></button></div>'});
@@ -224,7 +255,7 @@ function shelfView(id){
     var L=(c.artist.trim()[0]||"#").toUpperCase(); if(!/[A-Z]/.test(L))L="#";
     if(L!==last){h+='<div class="letter">'+L+'</div>';last=L}
     h+='<div class="cd"><button data-a="openCd" data-id="'+c.id+'" aria-label="'+esc(c.title)+' by '+esc(c.artist)+'. Open details">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
-      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</span><span class="go" aria-hidden="true">›</span></button></div>';
+      +(c.year?'<div class="meta">'+esc(c.year)+'</div>':'')+'</span><span class="go" aria-hidden="true">›</span></button></div>';
   });
   return h;
 }
@@ -240,8 +271,10 @@ function detailView(c){
    +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
    +'<label>Album<input class="field" data-f="title" value="'+esc(c.title)+'"></label>'
    +'<label>Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
-   +'<label>Notes<input class="field" data-f="notes" value="'+esc(c.notes)+'"></label>'
    +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
+   +'<label>Tracklist<textarea class="field tracks" data-f="tracks" rows="'+Math.min(30,Math.max(4,(c.tracks||"").split("\n").length+1))+'" placeholder="One track per line">'+esc(c.tracks||"")+'</textarea></label>'
+   +'<div class="sub" id="tstat" role="status" aria-live="polite"></div>'
+   +'<button class="btn alt" data-a="findTracks" data-id="'+c.id+'">Find tracklist</button>'
    +'<div class="artrow"><button class="btn alt" data-a="findArt" data-id="'+c.id+'">Find cover</button>'+(c.art?'<button class="btn alt" data-a="noArt" data-id="'+c.id+'">Remove cover</button>':'')+'</div>'
    +'<button class="btn" data-a="back">Done</button>'
    +'<button class="btn bad" data-a="delCd" data-id="'+c.id+'">Delete this CD</button></div>';
@@ -252,7 +285,7 @@ function render(){
   var id=route();
   var dcd=routeCd();
   app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
-  if(dcd)wantArt([dcd]);
+  if(dcd){wantArt([dcd]);if(!dcd.tracks&&!dcd.tracksTried)loadTracks(dcd)}
   else if(id)wantArt(cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)}));
   if(!id&&ui.q){var q=document.getElementById("q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
@@ -352,7 +385,10 @@ app.addEventListener("click",function(e){
   else if(a==="shelfMenu")shelfMenu(route());
   else if(a==="openCd"){location.hash=route()+"/"+id}
   else if(a==="findArt"){var c=S.cds.find(function(x){return x.id===id});if(!c)return;toast("Looking for the cover…");
-    fetchArt(c).then(function(u){c.artTried=Date.now();if(u){c.art=u;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
+    fetchArt(c).then(function(r){c.artTried=Date.now();if(r)c.src=r.src;if(r&&r.art){c.art=r.art;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
+  else if(a==="findTracks"){var c3=S.cds.find(function(x){return x.id===id});if(!c3)return;
+    if(c3.tracks&&c3.tracks.trim())confirmSheet("Replace tracklist?","This will replace what is written now with a fresh lookup.","Replace",function(){c3.src=null;loadTracks(c3,true)});
+    else{c3.src=null;loadTracks(c3,true)}}
   else if(a==="noArt"){var c2=S.cds.find(function(x){return x.id===id});if(c2){c2.art="";c2.artTried=Date.now();save();render()}}
   else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){var sh=route();S.cds=S.cds.filter(function(c){return c.id!==id});save();if(sh)location.hash=sh;else render()});
 });
