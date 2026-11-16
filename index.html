@@ -588,6 +588,7 @@ async function tryMatch(text,parts,single){
       else if(scan.rows.some(function(o){return same(o)&&o.artist})){r.status="dupscan";r.checked=false}
     }
   }catch(e){r.status="error"}
+  if(!r.artist&&single){var w2=parts[0].split(" ").filter(Boolean);if(w2.length===2){r.artist=w2[0];r.title=w2[1]}}   // best guess for "ARTIST TITLE"; you can edit it
   return r;
 }
 function addScanned(){
