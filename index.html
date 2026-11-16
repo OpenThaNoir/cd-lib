@@ -71,8 +71,8 @@ html[data-theme="hclight"] .letter{color:#000}
 .grp{font-size:1.15rem;margin:1.2rem 0 .6rem}
 #camov{position:fixed;inset:0;z-index:200;background:#000;display:flex;flex-direction:column}
 #camov video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.camdim{position:absolute;left:50%;top:50%;width:90%;height:50%;transform:translate(-50%,-50%);box-shadow:0 0 0 100vmax rgba(0,0,0,.6);border-radius:1rem;pointer-events:none}
-.cambox{position:absolute;left:50%;top:50%;width:90%;height:50%;transform:translate(-50%,-50%);border:.35rem solid #ffd400;border-radius:1rem;pointer-events:none;transition:border-color .2s,box-shadow .2s}
+.camdim{position:absolute;left:50%;top:50%;width:64%;height:22%;transform:translate(-50%,-50%);box-shadow:0 0 0 100vmax rgba(0,0,0,.6);border-radius:1rem;pointer-events:none}
+.cambox{position:absolute;left:50%;top:50%;width:64%;height:22%;transform:translate(-50%,-50%);border:.35rem solid #ffd400;border-radius:1rem;pointer-events:none;transition:border-color .2s,box-shadow .2s}
 .cambox.hit{border-color:#3dff7a;box-shadow:0 0 1.5rem #3dff7a}
 .camtop{position:absolute;left:0;right:0;top:0;padding:1rem;padding-top:calc(1rem + env(safe-area-inset-top));background:rgba(0,0,0,.75);color:#fff;font-size:1.1rem;font-weight:700;text-align:center}
 .cambtm{position:absolute;left:0;right:0;bottom:0;padding:1rem;padding-bottom:calc(1rem + env(safe-area-inset-bottom));background:rgba(0,0,0,.75)}
@@ -530,7 +530,7 @@ function scanView(sid){
    +'<h1>Add from photos<span class="sub">Adding to '+esc(s.name)+'</span></h1>'
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button></div>'
    +'<div class="quick"><button class="btn" data-a="camScan" style="width:100%">▥ Scan barcodes with the camera</button>'
-   +'<p class="sub" style="margin:0">Point your camera at the barcode on the back of a CD. It reads it by itself and moves on to the next one.</p></div>'
+   +'<p class="sub" style="margin:0">Point your camera at the barcode on the back of a CD. It reads it, adds it to this shelf by itself, and you move on to the next one.</p></div>'
    +'<div class="quick"><label class="btn alt" for="barfile" style="text-align:center;display:block">▥ Photo of a barcode instead</label>'
    +'<input type="file" id="barfile" accept="image/*" capture="environment" multiple hidden>'
    +'<p class="sub" style="margin:0">If the live camera does not work, take a close, flat photo of the barcode.</p></div>'
@@ -672,11 +672,14 @@ async function lookupBarcode(code){
     if(rel){var rg=rel["release-group"]||{},ac=(rel["artist-credit"]||[])[0];
       return{artist:ac?ac.name:"",title:rel.title,year:String(rg["first-release-date"]||rel.date||"").slice(0,4),art:"https://coverartarchive.org/release/"+rel.id+"/front-250",src:rg.id?{m:rg.id}:null}}}catch(e){}
   return null}
-async function addByCode(code){   // -> "found" | "miss" | "skip"
+async function addByCode(code,direct){   // -> "found" | "miss" | "skip" | "dup"
   if(scan.rows.some(function(o){return o.ocr==="Barcode "+code}))return "skip";
   var h=await lookupBarcode(code),row={id:uid(),ocr:"Barcode "+code,artist:"",title:"",year:"",art:"",src:null,status:"none",checked:false},res="miss";
   if(h){row.artist=h.artist;row.title=tidyTitle(h.title);row.year=h.year;row.art=h.art;row.src=h.src;row.status="found";row.checked=true;res="found";
     var same=function(c){return nrm(c.artist)===nrm(row.artist)&&nrm(c.title)===nrm(row.title)};
+    if(direct){   // live scanner: put it on the shelf right away
+      if(S.cds.some(same))return "dup";
+      S.cds.push({id:uid(),shelf:scan.sid,artist:row.artist.trim(),title:row.title.trim(),year:row.year||"",notes:"",art:row.art||"",artTried:row.art?Date.now():0,src:row.src||null});save();return "found"}
     if(S.cds.some(same)){row.status="dup";row.checked=false}else if(scan.rows.some(function(o){return same(o)&&o.artist})){row.status="dupscan";row.checked=false}}
   addRow(row);return res}
 async function processBarcodes(files){
@@ -705,7 +708,7 @@ async function startCam(){
   o.innerHTML='<video id="camv" playsinline muted autoplay></video><div class="camdim"></div><div class="cambox" id="cambox" aria-hidden="true"></div>'
     +'<div class="camtop" id="camstat" role="status" aria-live="polite">Starting the camera…</div>'
     +'<div class="cambtm"><button class="btn" id="camdone">Done</button></div>';
-  document.body.appendChild(o);document.getElementById("camdone").onclick=function(){var n=cam.n;stopCam();setSStat(n?"Scanned "+n+" CD"+(n===1?"":"s")+". Check the list, then press Add.":"")};
+  document.body.appendChild(o);document.getElementById("camdone").onclick=function(){var n=cam.n,m=cam.miss;stopCam();var sh=shelfById(scan.sid);setSStat((n?"Added "+n+" CD"+(n===1?"":"s")+" to "+(sh?sh.name:"the shelf")+". ":"")+(m?m+" barcode"+(m===1?"":"s")+" not found: type "+(m===1?"it":"them")+" in below.":""));if(n&&!m){toast("Added "+n+" CD"+(n===1?"":"s"));location.hash=scan.sid}};
   cam.busy=true;cam.seen={};cam.n=0;cam.miss=0;cam.q=Promise.resolve();
   try{
     cam.stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}},audio:false});
@@ -716,13 +719,13 @@ async function startCam(){
   if(!cam.det){try{await loadZX();var hints=new Map();hints.set(ZXing.DecodeHintType.TRY_HARDER,true);hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E]);
     cam.zx=new ZXing.MultiFormatReader();cam.zx.setHints(hints)}catch(e){stopCam();setSStat("Couldn't load the barcode reader. Check your internet connection.");return}}
   cam.canvas=document.createElement("canvas");
-  camSay("Point the camera at a barcode. Hold it inside the box.");
+  camSay("Point the camera at a barcode. Hold it inside the box. CDs are added to the shelf as soon as they are read.");
   var tick=async function(){
     if(!cam.stream)return;
     try{
       var vw=v.videoWidth,vh=v.videoHeight;
       if(vw){
-        var cw=Math.round(vw*.9),ch=Math.round(vh*.5),cx=Math.round((vw-cw)/2),cy=Math.round((vh-ch)/2);   // the part inside the box (plus a margin)
+        var cw=Math.round(vw*.72),ch=Math.round(vh*.3),cx=Math.round((vw-cw)/2),cy=Math.round((vh-ch)/2);   // the part inside the box (plus a margin)
         cam.canvas.width=cw;cam.canvas.height=ch;var g=cam.canvas.getContext("2d");g.drawImage(v,cx,cy,cw,ch,0,0,cw,ch);
         var codes=[];
         if(cam.det){var r=await cam.det.detect(cam.canvas);r.forEach(function(x){codes.push(String(x.rawValue||"").replace(/\D/g,""))})}
@@ -736,11 +739,13 @@ function camHit(code){
   var bx=document.getElementById("cambox");if(bx){bx.classList.add("hit");setTimeout(function(){bx.classList.remove("hit")},700)}
   camSay("Got it: "+code+". Looking it up…");
   cam.q=cam.q.then(async function(){
-    var r="miss";try{r=await addByCode(code)}catch(e){}
-    var last=scan.rows[scan.rows.length-1];
-    if(r==="found"){cam.n++;camSay("Added “"+(last&&last.title)+"” by "+(last&&last.artist)+". "+cam.n+" scanned. Point at the next one.")}
-    else if(r==="miss"){cam.miss++;camSay("Barcode "+code+" isn't in the music database. It's in the list to type in. Point at the next one.")}
+    var r="miss";try{r=await addByCode(code,true)}catch(e){}
+    var cd=S.cds[S.cds.length-1];
+    if(r==="found"){cam.n++;camSay("Added “"+(cd&&cd.title)+"” by "+(cd&&cd.artist)+". "+cam.n+" added so far. Point at the next one.");camCount()}
+    else if(r==="dup")camSay("That one is already in your collection. Point at the next one.");
+    else if(r==="miss"){cam.miss++;camSay("Barcode "+code+" isn't in the music database. It's saved in the list to type in. Point at the next one.")}
     else camSay("Already scanned that one. Point at the next one.")})}
+function camCount(){var b=document.getElementById("camdone");if(b)b.textContent="Done ("+cam.n+" added)"}
 function loadTess(){return window.Tesseract?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";t.onload=res;t.onerror=function(){rej(new Error("load"))};document.head.appendChild(t)})}
 async function loadImage(f){
   try{if(window.createImageBitmap)return await createImageBitmap(f,{imageOrientation:"from-image"})}catch(e){}
