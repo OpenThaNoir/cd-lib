@@ -215,7 +215,7 @@ var artQ=[],artBusy=false,artDown=false;
 function wantArt(list){list.forEach(function(c){if(!c.art&&!c.artTried&&artQ.indexOf(c.id)<0)artQ.push(c.id)});pumpArt()}
 function paintArt(c){document.querySelectorAll('[data-art="'+c.id+'"]').forEach(function(el){el.outerHTML=thumb(c)})}
 var yearQ=[],yearBusy=false,yearDone=false;
-function wantYears(list){list.forEach(function(c){if(!(parseInt(c.year,10)>0)&&!c.yearTried&&yearQ.indexOf(c.id)<0)yearQ.push(c.id)});pumpYears()}
+function wantYears(list){list.forEach(function(c){if(!(parseInt(c.year,10)>0)&&!(c.yearTried&&Date.now()-c.yearTried<864e5)&&yearQ.indexOf(c.id)<0)yearQ.push(c.id)});pumpYears()}
 async function findYear(c){
   var d=null;
   if(c.src&&c.src.i){var j=await paced(function(){return getJSON("https://itunes.apple.com/lookup?id="+c.src.i)});d=j.results&&j.results[0]&&j.results[0].releaseDate}
@@ -227,7 +227,7 @@ async function findYear(c){
 function pumpYears(){
   if(yearBusy||!yearQ.length){if(!yearBusy&&yearDone){yearDone=false;var a=document.activeElement;if(!a||a===document.body)render()}return}
   var c=S.cds.find(function(x){return x.id===yearQ[0]});yearQ.shift();
-  if(!c||parseInt(c.year,10)>0||c.yearTried){pumpYears();return}
+  if(!c||parseInt(c.year,10)>0||(c.yearTried&&Date.now()-c.yearTried<864e5)){pumpYears();return}
   yearBusy=true;
   findYear(c).then(function(y){c.yearTried=Date.now();if(y){c.year=y;yearDone=true}save()})
    .catch(function(){yearQ=[]})
