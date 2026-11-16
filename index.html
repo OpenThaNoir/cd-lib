@@ -467,7 +467,7 @@ async function readBands(worker,canvas,label){
     var yy=Math.min(y,H-bh);
     scan.statusText=label+" ("+Math.round(k/n*100)+"%)";setSStat(scan.statusText);
     var got=[];
-    var tries=[["6",false],["6",true],["7",false]];
+    var tries=[["11",false],["6",true],["6",false],["7",false]];
     for(var ti=0;ti<tries.length&&!got.length;ti++){
       await worker.setParameters({tessedit_pageseg_mode:tries[ti][0]});
       var res=await worker.recognize(bandCanvas(canvas,yy,bh,tries[ti][1])),d=res.data||{};
@@ -500,7 +500,9 @@ async function processFiles(files){
   var all=[];passes.forEach(function(p,pi){p.forEach(function(l){l.p=pi;all.push(l)})});
   all.sort(function(a,b){return b.c-a.c});
   var kept=[];all.forEach(function(l){var n=nrm(l.t);if(!n)return;
-    if(kept.some(function(k){var m=nrm(k.t);return m===n||m.indexOf(n)>-1||n.indexOf(m)>-1}))return;kept.push(l)});
+    var k=null;kept.some(function(o){var m=nrm(o.t);if(m===n||m.indexOf(n)>-1||n.indexOf(m)>-1){k=o;return true}});
+    if(!k){kept.push(l);return}
+    var m2=nrm(k.t);if(n.length>m2.length&&l.c>=k.c-30){kept[kept.indexOf(k)]=l}});   // keep the fuller reading
   var seqs=passes.map(function(_,pi){return kept.filter(function(l){return l.p===pi}).sort(function(a,b){return (a.y0||0)-(b.y0||0)})}).filter(function(q){return q.length});
   var total=seqs.reduce(function(n,q){return n+q.length},0);
   if(!total){scan.busy=false;scan.statusText="I couldn't read any text. Try a closer, brighter, straight-on photo of fewer spines.";setSStat(scan.statusText);return}
@@ -525,12 +527,15 @@ async function resolveSeqs(seqs,cap){
       i+=used;done+=used;
     }
   }
+  var known={};scan.rows.forEach(function(o){if(o.status==="found"&&o.artist)known[nrm(o.artist)]=1});
+  scan.rows.forEach(function(o){if(o.status==="weak"&&known[nrm(o.artist)]){o.status="found";o.checked=true;var el=document.querySelector('[data-row="'+o.id+'"]');if(el)el.outerHTML=rowHTML(o)}});
+  updateBar();
   if(lost.length){var hd=document.getElementById("srows");if(hd)hd.insertAdjacentHTML("beforeend",'<h2 class="lost">Couldn\'t match these ('+lost.length+')</h2>');lost.forEach(addRow)}
   scan.busy=false;scan.statusText="Done. Check each CD below, then press Add.";setSStat(scan.statusText);
 }
-async function mbPair(parts,frac){
+async function mbPair(parts,frac,oneWay){
   var orders=[[parts[0],parts[1]],[parts[1],parts[0]]];
-  for(var oi=0;oi<2;oi++){
+  for(var oi=0;oi<(oneWay?1:2);oi++){
     var ar=orders[oi][0].replace(/["\\]/g," "),ti=orders[oi][1].replace(/["\\]/g," ");
     var j=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=6&query="+encodeURIComponent('releasegroup:"'+ti+'" AND artist:"'+ar+'" AND primarytype:album'),2)});
     var g=(j["release-groups"]||[]).find(function(x){var ac=(x["artist-credit"]||[]).map(function(a){return a.name}).join(" ");
@@ -541,26 +546,43 @@ async function mbPair(parts,frac){
   }
   return null;
 }
+function fracT(p,hay){var tk=nrm(p).split(" ").filter(function(w){return w.length>=3});return tk.length?tk.filter(function(t){return hay.indexOf(t)>-1}).length/tk.length:0}
+// no separator on the spine ("MEGADETH ICON"): try every way of cutting it into artist + title
+async function mbSplit(text){
+  var w=text.split(" ").filter(Boolean);
+  for(var k=1;k<=Math.min(3,w.length-1);k++){
+    var m=await mbPair([w.slice(0,k).join(" "),w.slice(k).join(" ")],fracT,true);if(m)return m}
+  return null}
 async function tryMatch(text,parts,single){
   var r={id:uid(),ocr:parts.join(" / "),artist:"",title:parts.join(" "),art:"",src:null,status:"none",checked:false};
   try{
     var j=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=25&term="+encodeURIComponent(text))});
-    var best=null,bs=0;
-    var frac=function(p,hay){var tk=nrm(p).split(" ").filter(function(w){return w.length>=3});return tk.length?tk.filter(function(t){return hay.indexOf(t)>-1}).length/tk.length:0};
+    var best=null,bs=0,sure=false,ntext=nrm(text);
     (j.results||[]).forEach(function(x){if(!x.artworkUrl100)return;
-      var ah=" "+nrm(x.artistName)+" ",th=" "+nrm(x.collectionName)+" ",sc;
+      var ah=" "+nrm(x.artistName)+" ",th=" "+nrm(x.collectionName)+" ",sc,full=false;
       if(parts.length===2){                                   // one line must be the artist and the other the title, in either order
-        var f1=[frac(parts[0],ah),frac(parts[1],th)],f2=[frac(parts[1],ah),frac(parts[0],th)];
+        var f1=[fracT(parts[0],ah),fracT(parts[1],th)],f2=[fracT(parts[1],ah),fracT(parts[0],th)];
         var m1=Math.min(f1[0],f1[1]),m2=Math.min(f2[0],f2[1]);
         sc=Math.max(m1,m2);if(sc<.5)return;sc=Math.max((f1[0]+f1[1])/2*(m1>=.5),(f2[0]+f2[1])/2*(m2>=.5));
-      }else{var hay=" "+nrm(x.artistName+" "+x.collectionName)+" ";sc=frac(parts[0],hay);if(sc<.5)return}
-      if(sc>bs){bs=sc;best=x}});
-    var pick=null;
+      }else{
+        var hay=" "+nrm(x.artistName+" "+x.collectionName)+" ";sc=fracT(parts[0],hay);if(sc<.5)return;
+        var an=nrm(x.artistName),rest=ntext.indexOf(an+" ")===0?ntext.slice(an.length+1):"";   // line starts with the artist, then the title
+        if(rest&&fracT(rest,th)>=.8&&fracT(nrm(tidyTitle(x.collectionName))," "+rest+" ")>=.6){full=true;sc+=1}
+      }
+      if(sc>bs){bs=sc;best=x;sure=full}});
+    var pick=null,confident=!single||sure;
     if(best&&bs>=.6)pick={artist:best.artistName,title:best.collectionName,art:best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:best.collectionId}};
-    else if(parts.length===2)pick=await mbPair(parts,frac);     // Apple doesn't carry every album: try MusicBrainz
+    else if(parts.length===2){
+      // artist part may be misread or clipped ("LAYER" for "SLAYER"): search by the album title alone and check the artist loosely
+      var tj=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=25&term="+encodeURIComponent(parts[1]))});
+      var tb=(tj.results||[]).filter(function(x){return x.artworkUrl100&&fracT(parts[1]," "+nrm(tidyTitle(x.collectionName))+" ")>=.8&&fracT(nrm(tidyTitle(x.collectionName)),nrm(parts[1]))>=.6&&fracT(parts[0]," "+nrm(x.artistName)+" ")>=.5})[0];
+      if(tb)pick={artist:tb.artistName,title:tb.collectionName,art:tb.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:tb.collectionId}};
+      else pick=await mbPair(parts,fracT);     // Apple doesn't carry every album: try MusicBrainz
+    }
+    else if(single&&text.split(" ").length>=2){pick=await mbSplit(text);if(pick)confident=true}
     if(pick){
       r.artist=pick.artist;r.title=tidyTitle(pick.title);r.art=pick.art||"";r.src=pick.src;
-      r.status=single?"weak":"found";r.checked=!single;
+      r.status=confident?"found":"weak";r.checked=confident;
       var same=function(c){return nrm(c.artist)===nrm(r.artist)&&nrm(c.title)===nrm(r.title)};
       if(S.cds.some(same)){r.status="dup";r.checked=false}
       else if(scan.rows.some(function(o){return same(o)&&o.artist})){r.status="dupscan";r.checked=false}
