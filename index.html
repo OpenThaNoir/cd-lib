@@ -487,6 +487,19 @@ async function resolveSeqs(seqs,cap){
   if(lost.length){var hd=document.getElementById("srows");if(hd)hd.insertAdjacentHTML("beforeend",'<h2 class="lost">Couldn\'t match these ('+lost.length+')</h2>');lost.forEach(addRow)}
   scan.busy=false;scan.statusText="Done. Check each CD below, then press Add.";setSStat(scan.statusText);
 }
+async function mbPair(parts,frac){
+  var orders=[[parts[0],parts[1]],[parts[1],parts[0]]];
+  for(var oi=0;oi<2;oi++){
+    var ar=orders[oi][0].replace(/["\\]/g," "),ti=orders[oi][1].replace(/["\\]/g," ");
+    var j=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=6&query="+encodeURIComponent('releasegroup:"'+ti+'" AND artist:"'+ar+'" AND primarytype:album'))});
+    var g=(j["release-groups"]||[]).find(function(x){var ac=(x["artist-credit"]||[]).map(function(a){return a.name}).join(" ");
+      return frac(ar," "+nrm(ac)+" ")>=.6&&frac(ti," "+nrm(x.title)+" ")>=.6});
+    if(g){var u="https://coverartarchive.org/release-group/"+g.id+"/front-250",art="";
+      try{var h=await fetch(u);if(h.ok)art=u}catch(e){}
+      return {artist:(g["artist-credit"]||[]).map(function(a){return a.name}).join(", "),title:g.title,art:art,src:{m:g.id}}}
+  }
+  return null;
+}
 async function tryMatch(text,parts,single){
   var r={id:uid(),ocr:parts.join(" / "),artist:"",title:parts.join(" "),art:"",src:null,status:"none",checked:false};
   try{
@@ -501,9 +514,11 @@ async function tryMatch(text,parts,single){
         sc=Math.max(m1,m2);if(sc<.5)return;sc=Math.max((f1[0]+f1[1])/2*(m1>=.5),(f2[0]+f2[1])/2*(m2>=.5));
       }else{var hay=" "+nrm(x.artistName+" "+x.collectionName)+" ";sc=frac(parts[0],hay);if(sc<.5)return}
       if(sc>bs){bs=sc;best=x}});
-    if(best&&bs>=.6){
-      r.artist=best.artistName;r.title=tidyTitle(best.collectionName);
-      r.art=best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb.");r.src={i:best.collectionId};
+    var pick=null;
+    if(best&&bs>=.6)pick={artist:best.artistName,title:best.collectionName,art:best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:best.collectionId}};
+    else if(parts.length===2)pick=await mbPair(parts,frac);     // Apple doesn't carry every album: try MusicBrainz
+    if(pick){
+      r.artist=pick.artist;r.title=tidyTitle(pick.title);r.art=pick.art||"";r.src=pick.src;
       r.status=single?"weak":"found";r.checked=!single;
       var same=function(c){return nrm(c.artist)===nrm(r.artist)&&nrm(c.title)===nrm(r.title)};
       if(S.cds.some(same)){r.status="dup";r.checked=false}
