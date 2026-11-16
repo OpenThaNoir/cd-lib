@@ -56,7 +56,12 @@ html:not([data-theme="soft"]) .spines i{background:var(--acc)!important}
 .letter{font-size:1.15rem;font-weight:800;color:var(--acc);margin:1.2rem .2rem .4rem;border-bottom:var(--bw) solid var(--line)}
 html[data-theme="hclight"] .letter{color:#000}
 .cd{background:var(--panel);border:var(--bw) solid var(--line);border-radius:.8rem;margin-bottom:.5rem;overflow:hidden}
-.cd>button{display:block;width:100%;text-align:left;padding:.7rem .9rem;min-height:3.4rem}
+.cd>button{display:flex;align-items:center;gap:.8rem;width:100%;text-align:left;padding:.6rem .9rem .6rem .6rem;min-height:3.4rem}
+.cd .tx{flex:1;min-width:0}
+.art{flex:none;width:min(4.2rem,22vw);aspect-ratio:1;border-radius:.4rem;overflow:hidden;border:1px solid var(--line);background:var(--panel2);display:grid;place-items:center;color:var(--mute)}
+.art img{width:100%;height:100%;object-fit:cover;display:block}
+.art svg{width:70%;height:70%}
+.artrow{display:flex;gap:.6rem}.artrow .btn{flex:1;white-space:normal;font-size:.9rem;padding:.5rem .6rem}
 .cd .a{color:var(--mute);font-size:.95rem}
 .cd .t{font-weight:700;font-size:1.15rem;line-height:1.3;overflow-wrap:anywhere}
 .cd .meta{color:var(--mute);font-size:.9rem}
@@ -124,6 +129,40 @@ function route(){var h=location.hash.slice(1);return h&&shelfById(h)?h:null}
 function go(id){ui.open=null;ui.q="";location.hash=id||"";if(!id)render()}
 var toastT;function toast(t){var e=document.createElement("div");e.className="toast";e.setAttribute("role","status");e.textContent=t;document.body.appendChild(e);clearTimeout(toastT);setTimeout(function(){e.remove()},4500)}
 
+
+/* ---------- cover art (Apple iTunes Search API, looked up on this device) ---------- */
+var DISC='<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="21" fill="none" stroke="currentColor" stroke-width="3"/><circle cx="24" cy="24" r="7" fill="none" stroke="currentColor" stroke-width="3"/></svg>';
+function thumb(c){return '<span class="art" data-art="'+c.id+'" aria-hidden="true">'+(c.art?'<img src="'+esc(c.art)+'" alt="" loading="lazy" referrerpolicy="no-referrer">':DISC)+'</span>'}
+function nrm(x){return String(x||"").toLowerCase().replace(/\(.*?\)|\[.*?\]/g," ").replace(/&/g," and ").replace(/^the /,"").replace(/[^a-z0-9]+/g," ").trim()}
+function close(a,b){a=nrm(a);b=nrm(b);return !!a&&!!b&&(a===b||a.indexOf(b)>-1||b.indexOf(a)>-1)}
+async function lookup(term,c){
+  var r=await fetch("https://itunes.apple.com/search?media=music&entity=album&limit=8&term="+encodeURIComponent(term));
+  if(!r.ok)throw new Error("http "+r.status);
+  var j=await r.json(), hits=(j.results||[]).filter(function(x){return x.artworkUrl100});
+  var best=hits.find(function(x){return nrm(x.collectionName)===nrm(c.title)&&close(x.artistName,c.artist)})
+        ||hits.find(function(x){return close(x.collectionName,c.title)&&close(x.artistName,c.artist)});
+  return best?best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."):null;
+}
+async function fetchArt(c){
+  var u=await lookup(c.artist+" "+c.title,c);
+  if(!u){var t2=c.title.replace(/\(.*?\)|\[.*?\]/g,"").trim();if(t2&&t2!==c.title)u=await lookup(c.artist+" "+t2,c)}
+  return u;
+}
+var artQ=[],artBusy=false,artDown=false;
+function wantArt(list){list.forEach(function(c){if(!c.art&&!c.artTried&&artQ.indexOf(c.id)<0)artQ.push(c.id)});pumpArt()}
+function paintArt(c){document.querySelectorAll('[data-art="'+c.id+'"]').forEach(function(el){el.outerHTML=thumb(c)})}
+function pumpArt(){
+  if(artBusy||artDown||!artQ.length)return;
+  var c=S.cds.find(function(x){return x.id===artQ[0]});artQ.shift();
+  if(!c||c.art||c.artTried){pumpArt();return}
+  artBusy=true;
+  fetchArt(c).then(function(u){c.artTried=Date.now();if(u)c.art=u;save();paintArt(c)})
+   .catch(function(){artDown=true;setTimeout(function(){artDown=false;pumpArt()},60000)})   // offline or rate-limited: pause a minute
+   .then(function(){setTimeout(function(){artBusy=false;pumpArt()},3500)});                  // stay under Apple's ~20 requests/minute
+}
+window.addEventListener("online",function(){artDown=false;pumpArt()});
+document.addEventListener("error",function(e){var t=e.target;if(t&&t.tagName==="IMG"&&t.parentNode&&t.parentNode.classList.contains("art"))t.parentNode.innerHTML=DISC},true);
+
 /* ---------- views ---------- */
 function spines(list){
   var n=Math.min(list.length,22);
@@ -142,7 +181,7 @@ function home(){
     var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+c.notes+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
     if(!hits.length) h+='<div class="empty"><b>🔍</b>No matches</div>';
     hits.forEach(function(c){var s=shelfById(c.shelf);
-      h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></button></div>'});
+      h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></span></button></div>'});
     return h;
   }
   h+='<div class="shelves">';
@@ -166,8 +205,8 @@ function shelfView(id){
     var L=(c.artist.trim()[0]||"#").toUpperCase(); if(!/[A-Z]/.test(L))L="#";
     if(L!==last){h+='<div class="letter">'+L+'</div>';last=L}
     var open=ui.open===c.id;
-    h+='<div class="cd"><button data-a="toggle" data-id="'+c.id+'"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
-      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</button>';
+    h+='<div class="cd"><button data-a="toggle" data-id="'+c.id+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
+      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</span></button>';
     if(open){
       h+='<div class="edit" data-cd="'+c.id+'">'
        +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
@@ -175,6 +214,7 @@ function shelfView(id){
        +'<div class="row"><label>Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
        +'<label>Notes<input class="field" data-f="notes" value="'+esc(c.notes)+'"></label></div>'
        +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
+       +'<div class="artrow"><button class="btn alt" data-a="findArt" data-id="'+c.id+'">Find cover</button>'+(c.art?'<button class="btn alt" data-a="noArt" data-id="'+c.id+'">Remove cover</button>':'')+'</div>'
        +'<div class="row"><button class="btn bad" data-a="delCd" data-id="'+c.id+'">Delete</button><button class="btn" data-a="toggle" data-id="'+c.id+'" style="flex:1">Done</button></div></div>';
     }
     h+='</div>';
@@ -185,6 +225,7 @@ function shelfView(id){
 function render(){
   var id=route();
   app.innerHTML=id?shelfView(id):home();
+  if(id)wantArt(cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)}));
   if(!id&&ui.q){var q=document.getElementById("q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
 
@@ -282,6 +323,9 @@ app.addEventListener("click",function(e){
   else if(a==="display")displaySheet();
   else if(a==="shelfMenu")shelfMenu(route());
   else if(a==="toggle"){ui.open=ui.open===id?null:id;render();if(ui.open){var el=app.querySelector('[data-cd="'+id+'"]');if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"})}}
+  else if(a==="findArt"){var c=S.cds.find(function(x){return x.id===id});if(!c)return;toast("Looking for the cover…");
+    fetchArt(c).then(function(u){c.artTried=Date.now();if(u){c.art=u;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
+  else if(a==="noArt"){var c2=S.cds.find(function(x){return x.id===id});if(c2){c2.art="";c2.artTried=Date.now();save();render()}}
   else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){S.cds=S.cds.filter(function(c){return c.id!==id});ui.open=null;save();render()});
 });
 app.addEventListener("submit",function(e){
