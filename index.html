@@ -111,7 +111,7 @@ textarea.tracks{font-family:inherit;font-size:1rem;line-height:1.6;resize:vertic
 (function(){
 "use strict";
 var KEY="cdshelves.v1", OLD="cdlog.v1";
-var S={shelves:[],cds:[]};            // state
+var S={shelves:[],cds:[],del:{}};            // state
 var ui={open:null,q:"",sheet:null};   // open = id of cd being edited
 var app=document.getElementById("app");
 var PK="cdshelves.prefs",P={theme:"hcdark",size:22};
@@ -124,7 +124,7 @@ function applyPrefs(){var d=document.documentElement;d.setAttribute("data-theme"
 
 /* ---------- storage ---------- */
 function load(){
-  try{var d=JSON.parse(localStorage.getItem(KEY)||"null"); if(d&&d.shelves){S=d;return}}catch(e){}
+  try{var d=JSON.parse(localStorage.getItem(KEY)||"null"); if(d&&d.shelves){S=d;S.del=S.del||{};initSnap();return}}catch(e){}
   // migrate earlier flat list if present
   try{
     var old=JSON.parse(localStorage.getItem(OLD)||"[]");
@@ -132,7 +132,84 @@ function load(){
       S.cds=old.map(function(o){return{id:o.id||uid(),shelf:sh.id,artist:o.artist||"",title:o.title||"",year:o.year||"",notes:o.notes||""}});save()}
   }catch(e){}
 }
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("Couldn't save — storage is full or blocked")}}
+function save(){stamp();try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("Couldn't save — storage is full or blocked")}schedSync()}
+
+/* ---------- sync between devices (private GitHub gist) ---------- */
+var SK="cdshelves.sync",SFILE="cd-shelves-data.json",sync={cfg:null,busy:false,timer:null,msg:""},snap={};
+function loadSyncCfg(){try{sync.cfg=JSON.parse(localStorage.getItem(SK)||"null")}catch(e){sync.cfg=null}}
+function saveSyncCfg(){try{if(sync.cfg)localStorage.setItem(SK,JSON.stringify(sync.cfg));else localStorage.removeItem(SK)}catch(e){}}
+function stripMod(o){var c={};for(var k in o)if(k!=="mod")c[k]=o[k];return JSON.stringify(c)}
+function initSnap(){snap={};["shelves","cds"].forEach(function(t){S[t].forEach(function(o){snap[o.id]=stripMod(o)})})}
+function stamp(){   // note when each shelf/CD last changed, and remember deletions, so two devices can be merged
+  var now=Date.now(),ids={};S.del=S.del||{};
+  ["shelves","cds"].forEach(function(t){S[t].forEach(function(o){ids[o.id]=1;var j=stripMod(o);if(snap[o.id]!==j||!o.mod){o.mod=now;snap[o.id]=j}})});
+  Object.keys(snap).forEach(function(id){if(!ids[id]){S.del[id]=now;delete snap[id]}});
+  Object.keys(S.del).forEach(function(id){if(now-S.del[id]>60*864e5)delete S.del[id]});
+}
+function mergeData(L,R){
+  var del={};[L.del||{},R.del||{}].forEach(function(d){Object.keys(d).forEach(function(k){del[k]=Math.max(del[k]||0,d[k])})});
+  var out={shelves:[],cds:[],del:del};
+  ["shelves","cds"].forEach(function(t){var m={},order=[];
+    (L[t]||[]).concat(R[t]||[]).forEach(function(o){var p=m[o.id];if(!p){order.push(o.id);m[o.id]=o}else if((o.mod||0)>(p.mod||0))m[o.id]=o});
+    order.forEach(function(id){if(del[id]&&del[id]>(m[id].mod||0))return;out[t].push(m[id])})});
+  var sh={};out.shelves.forEach(function(x){sh[x.id]=1});out.cds=out.cds.filter(function(c){return sh[c.shelf]});
+  return out}
+function canon(d){var f=function(a){return (a||[]).slice().sort(function(x,y){return x.id<y.id?-1:1})};
+  var dl=d.del||{},dk={};Object.keys(dl).sort().forEach(function(k){dk[k]=dl[k]});return JSON.stringify([f(d.shelves),f(d.cds),dk])}
+async function gh(path,opt){
+  opt=opt||{};var r=await fetch("https://api.github.com"+path,{method:opt.method||"GET",headers:{Authorization:"Bearer "+sync.cfg.token,Accept:"application/vnd.github+json","Content-Type":"application/json"},body:opt.body?JSON.stringify(opt.body):undefined});
+  if(!r.ok){var e=new Error("gh "+r.status);e.status=r.status;throw e}return r.json()}
+async function findGist(){
+  if(sync.cfg.gist)return sync.cfg.gist;
+  for(var pg=1;pg<=3;pg++){var l=await gh("/gists?per_page=100&page="+pg);
+    var g=l.find(function(x){return x.files&&x.files[SFILE]});if(g){sync.cfg.gist=g.id;saveSyncCfg();return g.id}
+    if(l.length<100)break}
+  return null}
+async function readGist(id){
+  var g=await gh("/gists/"+id),f=g.files&&g.files[SFILE];if(!f)return null;
+  var txt=f.content;if(f.truncated||txt==null){var r=await fetch(f.raw_url);txt=await r.text()}
+  var d=JSON.parse(txt);return d&&d.shelves?d:null}
+async function writeGist(id,data){
+  var files={};files[SFILE]={content:JSON.stringify(data)};
+  if(id){await gh("/gists/"+id,{method:"PATCH",body:{files:files}});return id}
+  var g=await gh("/gists",{method:"POST",body:{description:"CD Shelves data (private, do not delete)",public:false,files:files}});
+  sync.cfg.gist=g.id;saveSyncCfg();return g.id}
+function schedSync(){if(!sync.cfg)return;clearTimeout(sync.timer);sync.timer=setTimeout(function(){syncNow()},6000)}
+async function syncNow(){
+  if(!sync.cfg||sync.busy)return;sync.busy=true;sync.msg="Syncing…";
+  try{
+    stamp();
+    var id=await findGist(),remote=null;
+    if(id){try{remote=await readGist(id)}catch(e){if(e.status===404){sync.cfg.gist=null;saveSyncCfg();id=await findGist();remote=id?await readGist(id):null}else throw e}}
+    var local={shelves:S.shelves,cds:S.cds,del:S.del||{}},merged=remote?mergeData(local,remote):local;
+    if(!remote||canon(merged)!==canon(remote))await writeGist(id,merged);
+    if(canon(merged)!==canon(local)){
+      S={shelves:merged.shelves,cds:merged.cds,del:merged.del};initSnap();
+      try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}
+      var a=document.activeElement;if(!document.getElementById("scrim")&&(!a||a===document.body||a.tagName==="BUTTON"))render()}
+    sync.cfg.last=Date.now();saveSyncCfg();sync.msg="Synced just now."
+  }catch(e){
+    sync.msg=e.status===401?"GitHub didn't accept the token. Disconnect and enter a new one.":(e.status===403||e.status===404)?"The token can't use gists. Make a new one with the \"gist\" box ticked.":"Couldn't reach GitHub (offline?). It will try again later."}
+  sync.busy=false;var el=document.getElementById("syncstat");if(el)el.textContent=syncStatus()}
+function syncStatus(){return sync.msg+(sync.cfg&&sync.cfg.last&&sync.msg.indexOf("Synced")===0?"":sync.cfg&&sync.cfg.last?" Last synced "+new Date(sync.cfg.last).toLocaleString()+".":"")}
+function syncSheet(){
+  var d;
+  if(sync.cfg){
+    d=sheet('<h2>Sync between devices</h2><p>This device is connected. Changes sync by themselves when you open the app and a few seconds after you change something.</p><p id="syncstat" role="status">'+esc(syncStatus())+'</p>'
+      +'<div class="menu"><button class="item" id="sn">⟳ Sync now</button><button class="item" id="sd">✕ Disconnect this device</button></div><button class="btn alt" id="x" style="width:100%">Close</button>');
+    d.querySelector("#sn").onclick=function(){syncNow()};
+    d.querySelector("#sd").onclick=function(){sync.cfg=null;saveSyncCfg();sync.msg="";closeSheet();toast("Disconnected. Your CDs stay on this device.")};
+  }else{
+    d=sheet('<h2>Sync between devices</h2><p>Your shelves are saved in a private file in <b>your own GitHub account</b>. Do these steps once on each device:</p>'
+      +'<ol><li>Open <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=CD+Shelves" target="_blank" rel="noopener">this GitHub page</a> and sign in.</li>'
+      +'<li>Leave only the <b>gist</b> box ticked. Press <b>Generate token</b> at the bottom.</li><li>Copy the token it shows (it starts with ghp_) and paste it below.</li></ol>'
+      +'<label>Token<input class="field" id="tk" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="ghp_…"></label>'
+      +'<p id="syncstat" role="status"></p><div class="row"><button class="btn alt" id="x">Cancel</button><button class="btn" id="ok">Connect</button></div>');
+    d.querySelector("#ok").onclick=function(){var t=d.querySelector("#tk").value.trim();if(!t){d.querySelector("#syncstat").textContent="Paste the token first.";return}
+      sync.cfg={token:t,gist:null,last:0};saveSyncCfg();d.querySelector("#syncstat").textContent="Connecting…";
+      syncNow().then(function(){if(sync.msg.indexOf("Synced")===0){closeSheet();toast("Connected. Your shelves are syncing.")}else{var m=sync.msg;sync.cfg=null;saveSyncCfg();var e=document.getElementById("syncstat");if(e)e.textContent=m}})}}
+  var x=d.querySelector("#x");if(x)x.onclick=closeSheet}
+
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 /* ---------- helpers ---------- */
@@ -368,10 +445,11 @@ function download(){
   a.href=u;a.download="cd-shelves.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},1500)}
 
 function mainMenu(){
-  var d=sheet('<h2>Backup &amp; import</h2><p>Your CDs live on this device only. Download a backup now and then.</p><div class="menu">'
-    +'<button class="item" id="dl">⬇︎ Download backup (CSV)</button><button class="item" id="cp">⧉ Copy as CSV</button>'
+  var d=sheet('<h2>Sync, backup &amp; import</h2><p>Without sync, your CDs live on this device only. Download a backup now and then.</p><div class="menu">'
+    +'<button class="item" id="sy">☁ Sync between devices</button><button class="item" id="dl">⬇︎ Download backup (CSV)</button><button class="item" id="cp">⧉ Copy as CSV</button>'
     +'<button class="item" id="im">⬆︎ Import from CSV file</button><button class="item" id="pa">✎ Import pasted rows</button></div>'
     +'<p>CSV columns: shelf, artist, title, year, notes.</p><input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>');
+  d.querySelector("#sy").onclick=function(){syncSheet()};
   d.querySelector("#dl").onclick=function(){download();closeSheet();toast("Backup downloaded")};
   d.querySelector("#cp").onclick=function(){try{navigator.clipboard.writeText(toCSV()).then(function(){closeSheet();toast("Copied")},function(){toast("Copy blocked")})}catch(e){toast("Copy blocked")}};
   d.querySelector("#im").onclick=function(){d.querySelector("#file").click()};
@@ -755,7 +833,8 @@ app.addEventListener("change",function(e){if(e.target.id==="coverfile"){var cf=e
   if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
 window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
-loadPrefs();load();render();
+loadPrefs();load();loadSyncCfg();render();
+if(sync.cfg){syncNow();document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")syncNow()})}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
 })();
