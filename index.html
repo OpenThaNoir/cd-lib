@@ -437,13 +437,47 @@ function turned(src,deg){
   if(deg===0){c.width=w;c.height=h}else{c.width=h;c.height=w}
   var x=c.getContext("2d");try{x.filter="grayscale(1) contrast(1.35)"}catch(e){}
   x.translate(c.width/2,c.height/2);x.rotate(deg*Math.PI/180);x.drawImage(src,-w/2,-h/2);return c}
-function cleanLine(t){return String(t||"").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
+function cleanLine(t){
+  return String(t||"").replace(/[·•–—‧∙|]+/g," - ").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
+function trimEnds(str){      // drop stray label/junk words at either end of a line, e.g. "americen ME SLAYER - TITLE 8"
+  var w=str.split(" ").filter(Boolean),up=w.some(function(x){return /[A-Z]{2,}/.test(x)});
+  var junk=function(x){var l=x.replace(/[^A-Za-z]/g,"");return !l||l.length<=2||(up&&/^[a-z]+$/.test(l)&&l.length>=3&&x!==x.toUpperCase())};
+  while(w.length>1&&junk(w[0])&&w[0]!=="-")w.shift();
+  while(w.length>1&&junk(w[w.length-1])&&w[w.length-1]!=="-")w.pop();
+  return w.join(" ").replace(/^[-.,:\s]+|[-.,:\s]+$/g,"")}
 function goodLine(t,conf){
   var letters=(t.match(/[A-Za-z]/g)||[]).length;
-  if(conf<60||letters<4||letters/t.length<.6||!/[A-Za-z]{2,}/.test(t))return false;
+  if(conf<60||letters<5||letters/t.length<.6||!/[A-Za-z]{2,}/.test(t))return false;
   if(t.split(" ").some(function(w){return /[A-Za-z]/.test(w)&&/\d/.test(w)&&w.length>3}))return false;   // junk like "d31NdINOD"
   return t.split(" ").some(function(w){return w.replace(/[^A-Za-z]/g,"").length>=3})}
 function tidyTitle(t){return t.replace(/\s+-\s+(Single|EP)$/i,"").replace(/\s*[\(\[][^)\]]*(remaster|mix|deluxe|edition|version|anniversary)[^)\]]*[\)\]]\s*$/i,"").trim()||t}
+function bandCanvas(src,y,h,invert){
+  var c=document.createElement("canvas");c.width=src.width;c.height=h;var x=c.getContext("2d");x.drawImage(src,0,y,src.width,h,0,0,src.width,h);
+  if(invert){var d=x.getImageData(0,0,c.width,h),p=d.data;for(var i=0;i<p.length;i+=4){p[i]=255-p[i];p[i+1]=255-p[i+1];p[i+2]=255-p[i+2]}x.putImageData(d,0,0)}
+  return c}
+function toLine(l,y){
+  var raw=cleanLine(l.text),m=raw.match(/^(.*?[A-Za-z0-9].*?)\s+-\s+(.*[A-Za-z0-9].*)$/),t,parts=null;
+  if(m){var L=trimEnds(m[1]),R=trimEnds(m[2]);if(/[A-Za-z]{2,}/.test(L)&&/[A-Za-z]{2,}/.test(R)){parts=[L,R];t=L+" - "+R}}
+  if(!t)t=trimEnds(raw);
+  var bb=l.bbox||{};return{t:t,parts:parts,c:l.confidence,y0:(bb.y0||0)+y,y1:(bb.y1||0)+y}}
+// read a (rotated) photo in overlapping strips: much better than the whole photo at once when the background is busy
+async function readBands(worker,canvas,label){
+  var H=canvas.height,bh=Math.min(H,200),step=100,out=[],n=Math.max(1,Math.ceil((H-bh)/step)+1),k=0;
+  for(var y=0;y<=H-bh+step-1&&k<n;y+=step,k++){
+    var yy=Math.min(y,H-bh);
+    scan.statusText=label+" ("+Math.round(k/n*100)+"%)";setSStat(scan.statusText);
+    var got=[];
+    var tries=[["6",false],["6",true],["7",false]];
+    for(var ti=0;ti<tries.length&&!got.length;ti++){
+      await worker.setParameters({tessedit_pageseg_mode:tries[ti][0]});
+      var res=await worker.recognize(bandCanvas(canvas,yy,bh,tries[ti][1])),d=res.data||{};
+      var ls=(d.lines&&d.lines.length)?d.lines:String(d.text||"").split("\n").map(function(t){return{text:t,confidence:d.confidence||0}});
+      ls.forEach(function(l){var ln=toLine(l,yy);if(goodLine(ln.t,ln.c))got.push(ln)});
+    }
+    got.forEach(function(g){out.push(g)});
+  }
+  return out;
+}
 async function processFiles(files){
   if(scan.busy||!files.length)return;scan.busy=true;
   var passes=[];
@@ -452,12 +486,11 @@ async function processFiles(files){
     await loadTess();
     var worker=await Tesseract.createWorker("eng");
     for(var fi=0;fi<files.length;fi++){
-      var img=await loadImage(files[fi]),base=baseCanvas(img),degs=[0,90,270];
-      for(var di=0;di<degs.length;di++){
-        scan.statusText="Reading photo "+(fi+1)+" of "+files.length+", pass "+(di+1)+" of 3…";setSStat(scan.statusText);
-        var res=await worker.recognize(turned(base,degs[di])),d=res.data||{};
-        var lines=(d.lines&&d.lines.length)?d.lines.map(function(l){var bb=l.bbox||{};return{t:cleanLine(l.text),c:l.confidence,y0:bb.y0,y1:bb.y1}}):String(d.text||"").split("\n").map(function(t){return{t:cleanLine(t),c:d.confidence||0}});
-        passes.push(lines.filter(function(l){return goodLine(l.t,l.c)}));
+      var img=await loadImage(files[fi]),base=baseCanvas(img),tag="Reading photo "+(fi+1)+" of "+files.length;
+      var up=await readBands(worker,turned(base,0),tag);passes.push(up);
+      if(up.filter(function(l){return l.c>=65}).length<2){      // nothing readable upright: spines may be standing up, try sideways
+        passes.push(await readBands(worker,turned(base,90),tag+", turned one way"));
+        passes.push(await readBands(worker,turned(base,270),tag+", turned the other way"));
       }
     }
     await worker.terminate();
@@ -480,9 +513,14 @@ async function resolveSeqs(seqs,cap){
     while(i<q.length&&done<cap){
       var a=q[i],b=q[i+1],used=1,row=null;
       scan.statusText="Looking up CDs… ("+made+" found so far)";setSStat(scan.statusText);
-      var near=b&&(a.y1==null||b.y0==null||(b.y0-a.y1)<=1.6*Math.max(a.y1-a.y0,b.y1-b.y0));
-      if(near){row=await tryMatch(a.t+" "+b.t,[a.t,b.t],false);if(row.status==="found"||row.status==="dup"||row.status==="dupscan")used=2;else row=null}
-      if(!row)row=await tryMatch(a.t,[a.t],true);
+      if(a.parts){                                   // "ARTIST - TITLE" on one line
+        row=await tryMatch(a.parts.join(" "),a.parts,false);
+        if(row.status==="none"||row.status==="error")row=await tryMatch(a.t,[a.t],true);
+      }else{
+        var near=b&&!b.parts&&(a.y1==null||b.y0==null||(b.y0-a.y1)<=1.6*Math.max(a.y1-a.y0,b.y1-b.y0));
+        if(near){row=await tryMatch(a.t+" "+b.t,[a.t,b.t],false);if(row.status==="found"||row.status==="dup"||row.status==="dupscan")used=2;else row=null}
+        if(!row)row=await tryMatch(a.t,[a.t],true);
+      }
       if(row.status==="none"||row.status==="error")lost.push(row);else{addRow(row);made++}
       i+=used;done+=used;
     }
