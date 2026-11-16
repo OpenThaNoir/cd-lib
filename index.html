@@ -68,6 +68,8 @@ html[data-theme="hclight"] .letter{color:#000}
 .edit{padding:.6rem .9rem 1rem;display:grid;gap:.7rem;border-top:var(--bw) solid var(--line)}
 .edit label,.sheet label{font-size:.95rem;color:var(--ink);display:grid;gap:.25rem;font-weight:600}
 .lost{font-size:1.15rem;margin:1.4rem 0 .6rem;padding-top:.8rem;border-top:var(--bw) solid var(--line)}
+.cand{display:flex;align-items:center;gap:.8rem;text-align:left;width:100%}
+.cand .art{flex:none}
 .scanbtn{width:100%;margin:0 0 1rem}
 .srow{background:var(--panel);border:var(--bw) solid var(--line);border-radius:1rem;padding:.8rem;margin-bottom:.8rem;display:grid;gap:.6rem}
 .srow label{font-size:.95rem;font-weight:600;display:grid;gap:.25rem}
@@ -315,7 +317,7 @@ function detailView(c){
 }
 
 function render(){
-  if(routeScan()){var ssid=route();if(scan.sid!==ssid)scan={sid:ssid,rows:[],busy:false};app.innerHTML=scanView(ssid);paintRows();updateBar();return}
+  if(routeScan()){var ssid=route();if(scan.sid!==ssid)scan={sid:ssid,rows:[],cards:[],busy:false};app.innerHTML=scanView(ssid);paintCards();paintRows();updateBar();return}
   var id=route();
   var dcd=routeCd();
   app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
@@ -410,7 +412,7 @@ function displaySheet(){
 
 
 /* ---------- bulk add: scan spines from photos (text reading happens on this device) ---------- */
-var scan={sid:null,rows:[],busy:false,pending:0};
+var scan={sid:null,rows:[],cards:[],busy:false,pending:0};
 var gate=Promise.resolve();
 function paced(fn){var run=gate.then(fn);gate=run.catch(function(){}).then(function(){return new Promise(function(r){setTimeout(r,3200)})});return run}   // stay under Apple's rate limit
 function setSStat(t){var e=document.getElementById("sstat");if(e)e.textContent=t}
@@ -425,8 +427,11 @@ function scanView(sid){
    +'<div class="quick"><p class="sub" style="margin:0">Or add every studio album by an artist:</p>'
    +'<input id="artistq" type="text" placeholder="Artist name, e.g. Metallica" autocomplete="off" style="width:100%">'
    +'<button class="btn alt" data-a="artistGo" style="width:100%">Find studio albums</button></div>'
+   +'<div class="quick"><p class="sub" style="margin:0"><b>Easier:</b> photograph the front of one CD at a time, then pick the right match.</p>'
+   +'<label class="btn alt" for="coverfile" style="text-align:center;display:block">📷 Photo of a CD front</label>'
+   +'<input type="file" id="coverfile" accept="image/*" capture="environment" hidden></div>'
    +'<div class="sub" id="sstat" role="status" aria-live="polite" style="margin:0 0 .8rem">'+esc(scan.statusText||"")+'</div>'
-   +'<div id="srows"></div>'
+   +'<div id="scards"></div><div id="srows"></div>'
    +'<div class="sbar"><button class="btn" data-a="scanAdd" id="scanAddBtn" style="width:100%">Add 0 CDs</button></div>';
 }
 function rowStatus(r){return {looking:"Looking it up…",found:"Possible match. Check it is right.",weak:"Only part of the spine was read. Check this one carefully.",none:"No match found. Fix the names or remove it.",dup:"Already in your collection.",dupscan:"Same album as another row.",error:"Couldn't look it up (offline?). Fix the names or remove it."}[r.status]||""}
@@ -465,6 +470,58 @@ async function findArtist(){
     scan.busy=false;
     setSStat(n?"Found "+n+" studio albums. Uncheck any you don't own, then press Add. Covers will fill in after.":"No studio albums found for that name. Check the spelling.");
   }catch(e){scan.busy=false;setSStat(e.message==="no artist"?"I couldn't find an artist with that exact name. Check the spelling.":"Couldn't look that up right now (the music database may be busy). Wait a minute and try again.")}
+}
+/* ---------- front cover photos ---------- */
+function paintCards(){var e=document.getElementById("scards");if(e)e.innerHTML=(scan.cards||[]).map(cardHTML).join("")}
+function cardHTML(k){
+  return '<div class="srow" data-card="'+k.id+'"><img src="'+k.thumb+'" alt="Your photo" style="max-width:9rem;max-height:9rem;border-radius:.6rem">'
+   +'<b>'+(k.cands.length?"Which one is it?":"No match found")+'</b>'
+   +k.cands.map(function(c,i){return '<button class="btn alt cand" data-a="pickCand" data-id="'+k.id+'" data-i="'+i+'">'
+     +'<span class="art" aria-hidden="true"><img src="'+esc(c.art)+'" alt="" referrerpolicy="no-referrer"></span>'
+     +'<span><b>'+esc(c.artist)+'</b><br>'+esc(tidyTitle(c.title))+(c.year?' ('+esc(c.year)+')':'')+'</span></button>'}).join("")
+   +'<button class="btn" data-a="manualCand" data-id="'+k.id+'">None of these: type it in</button>'
+   +'<button class="btn bad" data-a="dropCard" data-id="'+k.id+'">Skip this photo</button></div>'}
+function lev1(a,b){if(a===b)return true;if(Math.abs(a.length-b.length)>1)return false;
+  var i=0;while(i<a.length&&i<b.length&&a[i]===b[i])i++;
+  if(a.length===b.length)return a.slice(i+1)===b.slice(i+1)||a.slice(i)===b.slice(i);
+  var l=a.length>b.length?a:b,t=a.length>b.length?b:a;return l.slice(i+1)===t.slice(i)}
+var STOP={the:1,and:1,for:1,with:1,from:1,live:1,best:1,vol:1};
+function toks(s){return nrm(s).split(" ").filter(function(w){return w.length>=3&&!STOP[w]})}
+function covered(tk,set){return set.some(function(o){return o===tk||(tk.length>=5&&o.length>=5&&lev1(tk,o))||(tk.length>=5&&o.length>=tk.length&&o.indexOf(tk)>-1)})}
+async function processCover(file){
+  if(scan.busy)return;scan.busy=true;
+  try{
+    setSStat("Loading the text reader…");await loadTess();
+    var img=await loadImage(file),base=baseCanvas(img),k=Math.min(1,1600/Math.max(base.width,base.height));
+    var c=document.createElement("canvas");c.width=Math.round(base.width*k);c.height=Math.round(base.height*k);c.getContext("2d").drawImage(base,0,0,c.width,c.height);
+    var tk=document.createElement("canvas");var tkk=300/Math.max(c.width,c.height);tk.width=Math.round(c.width*tkk);tk.height=Math.round(c.height*tkk);tk.getContext("2d").drawImage(c,0,0,tk.width,tk.height);
+    var thumb=tk.toDataURL("image/jpeg",.6);
+    var worker=await Tesseract.createWorker("eng"),lines=[];
+    var variants=[["11",false],["11",true],["3",false]];
+    for(var vi=0;vi<variants.length;vi++){
+      setSStat("Reading the cover… ("+(vi+1)+" of 3)");
+      await worker.setParameters({tessedit_pageseg_mode:variants[vi][0]});
+      var res=await worker.recognize(variants[vi][1]?bandCanvas(c,0,c.height,true):c),d=res.data||{};
+      (d.lines||[]).forEach(function(l){var t=cleanLine(l.text);if(l.confidence>=45&&(t.match(/[A-Za-z]/g)||[]).length>=3)lines.push({t:t,c:l.confidence})});
+    }
+    await worker.terminate();
+    var set=[];lines.forEach(function(l){toks(l.t).forEach(function(w){if(set.indexOf(w)<0)set.push(w)})});
+    var uniq={},ls=lines.filter(function(l){var n=nrm(l.t);if(!n||uniq[n])return false;uniq[n]=1;return true}).sort(function(a,b){return b.t.length*b.c-a.t.length*a.c}).slice(0,5);
+    var queries=ls.map(function(l){return l.t});
+    if(ls.length>1)queries.push(ls[0].t+" "+ls[1].t);
+    var cands={};
+    for(var qi=0;qi<queries.length;qi++){
+      setSStat("Looking up matches… ("+(qi+1)+" of "+queries.length+")");
+      var j=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=15&term="+encodeURIComponent(queries[qi]))});
+      (j.results||[]).forEach(function(x){if(x.artworkUrl100&&!cands[x.collectionId])cands[x.collectionId]=x});
+    }
+    var scored=Object.keys(cands).map(function(id){var x=cands[id],a=toks(x.artistName),t=toks(tidyTitle(x.collectionName));
+      var ac=a.length?a.filter(function(w){return covered(w,set)}).length/a.length:0,tc=t.length?t.filter(function(w){return covered(w,set)}).length/t.length:0;
+      return {x:x,s:ac*1.2+tc,ac:ac,tc:tc}}).filter(function(o){return o.s>=.9&&(o.ac>0||o.tc>=1)}).sort(function(a,b){return b.s-a.s}).slice(0,5);
+    scan.cards.push({id:uid(),thumb:thumb,ocr:ls.map(function(l){return l.t}).join(" / "),cands:scored.map(function(o){var x=o.x;return{artist:x.artistName,title:x.collectionName,year:String(x.releaseDate||"").slice(0,4),art:x.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:x.collectionId}}})});
+    scan.busy=false;paintCards();
+    setSStat(scored.length?"Tap the one that matches your CD.":"I couldn't match that cover. Tap \"None of these\" to type it in.");
+  }catch(e){scan.busy=false;setSStat("Couldn't read that photo. Check your internet connection and try again.")}
 }
 function loadTess(){return window.Tesseract?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";t.onload=res;t.onerror=function(){rej(new Error("load"))};document.head.appendChild(t)})}
 async function loadImage(f){
@@ -637,7 +694,7 @@ function addScanned(){
   var sid=scan.sid,n=0;
   scan.rows.forEach(function(r){if(!r.checked||!r.artist.trim()||!r.title.trim())return;
     S.cds.push({id:uid(),shelf:sid,artist:r.artist.trim(),title:r.title.trim(),year:r.year||"",notes:"",art:r.art||"",artTried:r.art?Date.now():0,src:r.src||null});n++});
-  save();scan={sid:sid,rows:[],busy:false};
+  save();scan={sid:sid,rows:[],cards:[],busy:false};
   toast("Added "+n+" CD"+(n===1?"":"s"));location.hash=sid;
 }
 
@@ -654,6 +711,11 @@ app.addEventListener("click",function(e){
   else if(a==="artistGo"){findArtist()}
   else if(a==="scan"){location.hash=route()+"/scan"}
   else if(a==="scanAdd")addScanned();
+  else if(a==="pickCand"||a==="manualCand"||a==="dropCard"){
+    var k=scan.cards.find(function(x){return x.id===id});if(!k)return;
+    if(a==="pickCand"){var c=k.cands[+b.dataset.i];addRow({id:uid(),ocr:"Front cover photo",artist:c.artist,title:tidyTitle(c.title),year:c.year,art:c.art,src:c.src,status:"found",checked:true})}
+    else if(a==="manualCand")addRow({id:uid(),ocr:k.ocr||"Front cover photo",artist:"",title:"",art:"",src:null,status:"none",checked:false});
+    scan.cards=scan.cards.filter(function(x){return x.id!==id});paintCards()}
   else if(a==="skipRow"){scan.rows=scan.rows.filter(function(r){return r.id!==id});var e=document.querySelector('[data-row="'+id+'"]');if(e)e.remove();updateBar()}
   else if(a==="findArt"){var c=S.cds.find(function(x){return x.id===id});if(!c)return;toast("Looking for the cover…");
     fetchArt(c).then(function(r){c.artTried=Date.now();if(r)c.src=r.src;if(r&&r.art){c.art=r.art;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
@@ -680,7 +742,8 @@ app.addEventListener("input",function(e){
     c[t.dataset.f]=t.value;save();
     if(t.dataset.f==="shelf"){location.hash=c.shelf+"/"+c.id;toast("Moved to "+shelfById(t.value).name)}}
 });
-app.addEventListener("change",function(e){if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
+app.addEventListener("change",function(e){if(e.target.id==="coverfile"){var cf=e.target.files[0];e.target.value="";if(cf)processCover(cf)}
+  if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
 window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
 loadPrefs();load();render();
