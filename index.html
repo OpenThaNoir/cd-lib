@@ -434,7 +434,7 @@ async function findArtist(){
     var qq=q.replace(/["\\]/g," "),aj=await getJSON("https://musicbrainz.org/ws/2/artist/?fmt=json&limit=3&query="+encodeURIComponent('artist:"'+qq+'"'),2);
     var art=(aj.artists||[])[0];if(!art||nrm(art.name)!==nrm(q))throw new Error("no artist");
     await new Promise(function(r){setTimeout(r,1500)});
-    var j=await getJSON("https://musicbrainz.org/ws/2/release-group?fmt=json&limit=100&type=album&artist="+art.id,2);
+    var j=await getJSON("https://musicbrainz.org/ws/2/release-group?fmt=json&inc=artist-credits&limit=100&type=album&artist="+art.id,2);
     var want=nrm(art.name),seen={},list=(j["release-groups"]||[]).filter(function(x){
       if((x["secondary-types"]||[]).length)return false;
       var ac=x["artist-credit"]||[];return ac.length===1}).sort(function(a,b){return (a["first-release-date"]||"9").localeCompare(b["first-release-date"]||"9")});
