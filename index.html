@@ -291,7 +291,7 @@ function detailView(c){
 }
 
 function render(){
-  if(routeScan()){var ssid=route();if(scan.sid!==ssid)scan={sid:ssid,rows:[],busy:false,pending:0};app.innerHTML=scanView(ssid);paintRows();updateBar();return}
+  if(routeScan()){var ssid=route();if(scan.sid!==ssid)scan={sid:ssid,rows:[],busy:false};app.innerHTML=scanView(ssid);paintRows();updateBar();return}
   var id=route();
   var dcd=routeCd();
   app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
@@ -402,7 +402,7 @@ function scanView(sid){
    +'<div id="srows"></div>'
    +'<div class="sbar"><button class="btn" data-a="scanAdd" id="scanAddBtn" style="width:100%">Add 0 CDs</button></div>';
 }
-function rowStatus(r){return {looking:"Looking it up…",found:"Possible match. Check it is right.",none:"No match found. Fix the names or remove it.",dup:"Already in your collection.",dupscan:"Same album as another row.",error:"Couldn't look it up (offline?). Fix the names or remove it."}[r.status]||""}
+function rowStatus(r){return {looking:"Looking it up…",found:"Possible match. Check it is right.",weak:"Only part of the spine was read. Check this one carefully.",none:"No match found. Fix the names or remove it.",dup:"Already in your collection.",dupscan:"Same album as another row.",error:"Couldn't look it up (offline?). Fix the names or remove it."}[r.status]||""}
 function rowHTML(r){
   return '<div class="srow" data-row="'+r.id+'"><div class="srow-top"><label class="chk"><input type="checkbox" data-sc="ok"'+(r.checked?" checked":"")+'><span>Add</span></label>'
    +'<span class="art" aria-hidden="true">'+(r.art?'<img src="'+esc(r.art)+'" alt="" referrerpolicy="no-referrer">':DISC)+'</span></div>'
@@ -436,10 +436,13 @@ function turned(src,deg){
 function cleanLine(t){return String(t||"").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
 function goodLine(t,conf){
   var letters=(t.match(/[A-Za-z]/g)||[]).length;
-  return conf>=50&&letters>=4&&letters/t.length>=.6&&/[A-Za-z]{2,}/.test(t)&&t.split(" ").some(function(w){return w.replace(/[^A-Za-z]/g,"").length>=3})}
+  if(conf<60||letters<4||letters/t.length<.6||!/[A-Za-z]{2,}/.test(t))return false;
+  if(t.split(" ").some(function(w){return /[A-Za-z]/.test(w)&&/\d/.test(w)&&w.length>3}))return false;   // junk like "d31NdINOD"
+  return t.split(" ").some(function(w){return w.replace(/[^A-Za-z]/g,"").length>=3})}
+function tidyTitle(t){return t.replace(/\s+-\s+(Single|EP)$/i,"").replace(/\s*[\(\[][^)\]]*(remaster|mix|deluxe|edition|version|anniversary)[^)\]]*[\)\]]\s*$/i,"").trim()||t}
 async function processFiles(files){
   if(scan.busy||!files.length)return;scan.busy=true;
-  var found=[];
+  var passes=[];
   try{
     scan.statusText="Loading the text reader (first time only, a few MB)…";setSStat(scan.statusText);
     await loadTess();
@@ -449,46 +452,63 @@ async function processFiles(files){
       for(var di=0;di<degs.length;di++){
         scan.statusText="Reading photo "+(fi+1)+" of "+files.length+", pass "+(di+1)+" of 3…";setSStat(scan.statusText);
         var res=await worker.recognize(turned(base,degs[di])),d=res.data||{};
-        var lines=(d.lines&&d.lines.length)?d.lines.map(function(l){return{t:cleanLine(l.text),c:l.confidence}}):String(d.text||"").split("\n").map(function(t){return{t:cleanLine(t),c:d.confidence||0}});
-        lines.forEach(function(l){if(goodLine(l.t,l.c))found.push(l)});
+        var lines=(d.lines&&d.lines.length)?d.lines.map(function(l){var bb=l.bbox||{};return{t:cleanLine(l.text),c:l.confidence,y0:bb.y0,y1:bb.y1}}):String(d.text||"").split("\n").map(function(t){return{t:cleanLine(t),c:d.confidence||0}});
+        passes.push(lines.filter(function(l){return goodLine(l.t,l.c)}));
       }
     }
     await worker.terminate();
   }catch(e){
     scan.busy=false;scan.statusText="Couldn't load or run the text reader. Check your internet connection and try again.";setSStat(scan.statusText);return}
-  // de-duplicate (same text from different passes, or fragments of a longer line)
-  found.sort(function(a,b){return b.c-a.c});
-  var kept=[];found.forEach(function(l){var n=nrm(l.t);if(!n)return;
+  // keep each piece of text only once, in the pass that read it best
+  var all=[];passes.forEach(function(p,pi){p.forEach(function(l){l.p=pi;all.push(l)})});
+  all.sort(function(a,b){return b.c-a.c});
+  var kept=[];all.forEach(function(l){var n=nrm(l.t);if(!n)return;
     if(kept.some(function(k){var m=nrm(k.t);return m===n||m.indexOf(n)>-1||n.indexOf(m)>-1}))return;kept.push(l)});
-  kept=kept.slice(0,60);
-  if(!kept.length){scan.busy=false;scan.statusText="I couldn't read any text. Try a closer, brighter, straight-on photo of fewer spines.";setSStat(scan.statusText);return}
-  var fresh=kept.map(function(l){return{id:uid(),ocr:l.t,artist:"",title:l.t,art:"",src:null,status:"looking",checked:false}});
-  scan.rows=scan.rows.concat(fresh);paintRows();updateBar();
-  scan.pending+=fresh.length;scan.statusText="Found "+fresh.length+" possible CDs. Looking up each one…";setSStat(scan.statusText);
-  scan.busy=false;
-  fresh.forEach(function(r){matchRow(r).then(function(){refreshRow(r)}).then(function(){
-    scan.pending--;if(scan.pending<=0){scan.pending=0;scan.statusText="Done. Check each CD below, then press Add.";setSStat(scan.statusText)}})});
+  var seqs=passes.map(function(_,pi){return kept.filter(function(l){return l.p===pi}).sort(function(a,b){return (a.y0||0)-(b.y0||0)})}).filter(function(q){return q.length});
+  var total=seqs.reduce(function(n,q){return n+q.length},0);
+  if(!total){scan.busy=false;scan.statusText="I couldn't read any text. Try a closer, brighter, straight-on photo of fewer spines.";setSStat(scan.statusText);return}
+  await resolveSeqs(seqs,Math.min(total,60));
 }
-async function matchRow(r){
+function addRow(r){scan.rows.push(r);var e=document.getElementById("srows");if(e)e.insertAdjacentHTML("beforeend",rowHTML(r));updateBar()}
+async function resolveSeqs(seqs,cap){
+  var done=0,made=0;
+  for(var si=0;si<seqs.length;si++){var q=seqs[si],i=0;
+    while(i<q.length&&done<cap){
+      var a=q[i],b=q[i+1],used=1,row=null;
+      scan.statusText="Looking up CDs… ("+made+" found so far)";setSStat(scan.statusText);
+      var near=b&&(a.y1==null||b.y0==null||(b.y0-a.y1)<=1.6*Math.max(a.y1-a.y0,b.y1-b.y0));
+      if(near){row=await tryMatch(a.t+" "+b.t,[a.t,b.t],false);if(row.status==="found"||row.status==="dup"||row.status==="dupscan")used=2;else row=null}
+      if(!row)row=await tryMatch(a.t,[a.t],true);
+      addRow(row);made++;i+=used;done+=used;
+    }
+  }
+  scan.busy=false;scan.statusText="Done. Check each CD below, then press Add.";setSStat(scan.statusText);
+}
+async function tryMatch(text,parts,single){
+  var r={id:uid(),ocr:parts.join(" / "),artist:"",title:parts.join(" "),art:"",src:null,status:"none",checked:false};
   try{
-    var j=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=6&term="+encodeURIComponent(r.ocr))});
-    var toks=nrm(r.ocr).split(" ").filter(function(w){return w.length>=3}),best=null,bs=0;
+    var j=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=8&term="+encodeURIComponent(text))});
+    var best=null,bs=0;
     (j.results||[]).forEach(function(x){if(!x.artworkUrl100)return;var hay=" "+nrm(x.artistName+" "+x.collectionName)+" ";
-      var m=toks.filter(function(t){return hay.indexOf(t)>-1}).length,sc=toks.length?m/toks.length:0;if(sc>bs&&m>=1){bs=sc;best=x}});
-    if(best&&bs>=.5){
-      r.artist=best.artistName;r.title=best.collectionName.replace(/\s+-\s+(Single|EP)$/i,"");
-      r.art=best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb.");r.src={i:best.collectionId};r.status="found";r.checked=true;
+      var hits=parts.map(function(p){var tk=nrm(p).split(" ").filter(function(w){return w.length>=3});if(!tk.length)return 0;return tk.filter(function(t){return hay.indexOf(t)>-1}).length/tk.length});
+      if(hits.some(function(h){return h<.5}))return;                       // every part must be found
+      var sc=hits.reduce(function(m,h){return m+h},0)/hits.length;if(sc>bs){bs=sc;best=x}});
+    if(best&&bs>=.6){
+      r.artist=best.artistName;r.title=tidyTitle(best.collectionName);
+      r.art=best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb.");r.src={i:best.collectionId};
+      r.status=single?"weak":"found";r.checked=!single;
       var same=function(c){return nrm(c.artist)===nrm(r.artist)&&nrm(c.title)===nrm(r.title)};
       if(S.cds.some(same)){r.status="dup";r.checked=false}
-      else if(scan.rows.some(function(o){return o!==r&&o.status==="found"&&same(o)})){r.status="dupscan";r.checked=false}
-    }else{r.status="none"}
+      else if(scan.rows.some(function(o){return same(o)&&o.artist})){r.status="dupscan";r.checked=false}
+    }
   }catch(e){r.status="error"}
+  return r;
 }
 function addScanned(){
   var sid=scan.sid,n=0;
   scan.rows.forEach(function(r){if(!r.checked||!r.artist.trim()||!r.title.trim())return;
     S.cds.push({id:uid(),shelf:sid,artist:r.artist.trim(),title:r.title.trim(),year:"",notes:"",art:r.art||"",artTried:r.art?Date.now():0,src:r.src||null});n++});
-  save();scan={sid:sid,rows:[],busy:false,pending:0};
+  save();scan={sid:sid,rows:[],busy:false};
   toast("Added "+n+" CD"+(n===1?"":"s"));location.hash=sid;
 }
 
