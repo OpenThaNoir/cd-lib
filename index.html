@@ -378,7 +378,7 @@ function shelfView(id){
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="shelfMenu" aria-label="Shelf options">Options</button></div>';
   h+='<form class="quick" id="add" autocomplete="off"><input class="field" id="fa" placeholder="Artist" value="'+esc(ui.lastArtist||"")+'" enterkeyhint="next">'
    +'<div class="row"><input class="field" id="ft" placeholder="Album title" enterkeyhint="done"><button class="btn" type="submit">Add</button></div></form>';
-  h+='<button class="btn alt scanbtn" data-a="scan">📷 Scan CD spines from a photo</button>';
+  h+='<button class="btn alt scanbtn" data-a="scan">📷 Add CDs from photos</button>';
   if(!list.length) h+='<div class="empty"><b>🎶</b>This shelf is empty.<br>Add your first CD above.</div>';
   var last="";
   list.forEach(function(c){
@@ -516,17 +516,17 @@ function setSStat(t){var e=document.getElementById("sstat");if(e)e.textContent=t
 function scanView(sid){
   var s=shelfById(sid);
   return '<div class="bar"><button class="icon" data-a="back" aria-label="Back to shelf '+esc(s.name)+'">←</button>'
-   +'<h1>Scan spines<span class="sub">Adding to '+esc(s.name)+'</span></h1>'
+   +'<h1>Add from photos<span class="sub">Adding to '+esc(s.name)+'</span></h1>'
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button></div>'
-   +'<div class="quick"><p class="sub" style="margin:0">Take a bright, straight-on photo of a few spines at a time, with the writing big and in focus. You can pick several photos. Always check the list before adding.</p>'
-   +'<label class="btn" for="scanfile" style="text-align:center;display:block">Take or choose photos</label>'
-   +'<input type="file" id="scanfile" accept="image/*" multiple hidden></div>'
+   +'<div class="quick"><label class="btn" for="barfile" style="text-align:center;display:block">▥ Photo of the barcode</label>'
+   +'<input type="file" id="barfile" accept="image/*" capture="environment" multiple hidden>'
+   +'<p class="sub" style="margin:0">The most exact way. Take a close, flat photo of the barcode on the back of the case. Several barcodes in one photo also work on most phones.</p></div>'
+   +'<div class="quick"><label class="btn alt" for="coverfile" style="text-align:center;display:block">📷 Photo of the front cover</label>'
+   +'<input type="file" id="coverfile" accept="image/*" capture="environment" hidden>'
+   +'<p class="sub" style="margin:0">One CD per photo. You pick the right match from a list.</p></div>'
    +'<div class="quick"><p class="sub" style="margin:0">Or add every studio album by an artist:</p>'
    +'<input id="artistq" type="text" placeholder="Artist name, e.g. Metallica" autocomplete="off" style="width:100%">'
    +'<button class="btn alt" data-a="artistGo" style="width:100%">Find studio albums</button></div>'
-   +'<div class="quick"><p class="sub" style="margin:0"><b>Easier:</b> photograph the front of one CD at a time, then pick the right match.</p>'
-   +'<label class="btn alt" for="coverfile" style="text-align:center;display:block">📷 Photo of a CD front</label>'
-   +'<input type="file" id="coverfile" accept="image/*" capture="environment" hidden></div>'
    +'<div class="sub" id="sstat" role="status" aria-live="polite" style="margin:0 0 .8rem">'+esc(scan.statusText||"")+'</div>'
    +'<div id="scards"></div><div id="srows"></div>'
    +'<div class="sbar"><button class="btn" data-a="scanAdd" id="scanAddBtn" style="width:100%">Add 0 CDs</button></div>';
@@ -537,7 +537,7 @@ function rowHTML(r){
    +'<span class="art" aria-hidden="true">'+(r.art?'<img src="'+esc(r.art)+'" alt="" referrerpolicy="no-referrer">':DISC)+'</span></div>'
    +'<label>Artist<input class="field" data-sf="artist" value="'+esc(r.artist)+'"></label>'
    +'<label>Title<input class="field" data-sf="title" value="'+esc(r.title)+'"></label>'
-   +'<div class="sub st">'+esc(rowStatus(r))+'</div><div class="sub">'+(r.ocr==="Artist lookup"?"From the artist's album list":"Read from photo: “"+esc(r.ocr)+"”")+'</div>'
+   +'<div class="sub st">'+esc(rowStatus(r))+'</div><div class="sub">'+(r.ocr==="Artist lookup"?"From the artist's album list":/^Barcode /.test(r.ocr)?esc(r.ocr):"Read from photo: “"+esc(r.ocr)+"”")+'</div>'
    +'<button class="btn bad" data-a="skipRow" data-id="'+r.id+'">Remove</button></div>';
 }
 function paintRows(){var e=document.getElementById("srows");if(e)e.innerHTML=scan.rows.map(rowHTML).join("")}
@@ -627,6 +627,58 @@ async function processCover(file){
     scan.cards.push({id:uid(),thumb:thumb,ocr:ls.map(function(l){return l.t}).join(" / "),cands:scored.map(function(o){var x=o.x;return{artist:x.artistName,title:x.collectionName,year:String(x.releaseDate||"").slice(0,4),art:x.mb?"https://coverartarchive.org/release-group/"+x.mb+"/front-250":x.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:x.mb?{m:x.mb}:{i:x.collectionId}}})});
     scan.busy=false;paintCards();
     setSStat(scored.length?"Tap the one that matches your CD.":"I couldn't match that cover. Tap \"None of these\" to type it in.");
+  }catch(e){scan.busy=false;setSStat("Couldn't read that photo. Check your internet connection and try again.")}
+}
+/* ---------- barcode photos ---------- */
+function loadZX(){return window.ZXing?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";t.onload=res;t.onerror=rej;document.head.appendChild(t)})}
+function rotated(c,deg){var r=document.createElement("canvas");r.width=deg%180?c.height:c.width;r.height=deg%180?c.width:c.height;var x=r.getContext("2d");x.translate(r.width/2,r.height/2);x.rotate(deg*Math.PI/180);x.drawImage(c,-c.width/2,-c.height/2);return r}
+async function decodeBarcodes(file){
+  var img=await loadImage(file),base=baseCanvas(img),found=[];
+  var add=function(v){v=String(v||"").replace(/\D/g,"");if(v.length>=8&&found.indexOf(v)<0)found.push(v)};
+  if("BarcodeDetector" in window){
+    try{var det=new BarcodeDetector({formats:["ean_13","ean_8","upc_a","upc_e"]});
+      var r=await det.detect(base);r.forEach(function(x){add(x.rawValue)});
+      if(!found.length){var r2=await det.detect(img);r2.forEach(function(x){add(x.rawValue)})}}catch(e){}}
+  if(!found.length){
+    try{await loadZX();
+      var hints=new Map();hints.set(ZXing.DecodeHintType.TRY_HARDER,true);hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[ZXing.BarcodeFormat.EAN_13,ZXing.BarcodeFormat.EAN_8,ZXing.BarcodeFormat.UPC_A,ZXing.BarcodeFormat.UPC_E]);
+      var rd=new ZXing.BrowserMultiFormatReader(hints);
+      var tries=[base,rotated(base,90),rotated(base,270),rotated(base,180)];
+      for(var i=0;i<tries.length&&!found.length;i++){
+        try{var rs=await rd.decodeFromImageUrl(tries[i].toDataURL("image/png"));add(rs.getText())}catch(e){}}
+    }catch(e){}}
+  return found}
+async function lookupBarcode(code){
+  var codes=[code];if(code.length===13&&code[0]==="0")codes.push(code.slice(1));
+  for(var i=0;i<codes.length;i++){
+    try{var j=await paced(function(){return getJSON("https://itunes.apple.com/lookup?entity=album&upc="+codes[i])});
+      var x=(j.results||[]).find(function(y){return y.collectionName&&y.artworkUrl100});
+      if(x)return{artist:x.artistName,title:x.collectionName,year:String(x.releaseDate||"").slice(0,4),art:x.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:x.collectionId}}}catch(e){}}
+  try{var m=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release/?fmt=json&limit=5&query="+encodeURIComponent("barcode:"+code),2)});
+    var rel=(m.releases||[])[0];
+    if(rel){var rg=rel["release-group"]||{},ac=(rel["artist-credit"]||[])[0];
+      return{artist:ac?ac.name:"",title:rel.title,year:String(rg["first-release-date"]||rel.date||"").slice(0,4),art:"https://coverartarchive.org/release/"+rel.id+"/front-250",src:rg.id?{m:rg.id}:null}}}catch(e){}
+  return null}
+async function processBarcodes(files){
+  if(scan.busy||!files.length)return;scan.busy=true;var n=0,miss=0,nob=0;
+  try{
+    for(var fi=0;fi<files.length;fi++){
+      setSStat("Reading the barcode"+(files.length>1?" in photo "+(fi+1)+" of "+files.length:"")+"…");
+      var codes=await decodeBarcodes(files[fi]);
+      if(!codes.length){nob++;continue}
+      for(var ci=0;ci<codes.length;ci++){
+        var code=codes[ci];
+        if(scan.rows.some(function(o){return o.ocr==="Barcode "+code}))continue;
+        setSStat("Looking up barcode "+code+"…");
+        var h=await lookupBarcode(code),row={id:uid(),ocr:"Barcode "+code,artist:"",title:"",year:"",art:"",src:null,status:"none",checked:false};
+        if(h){row.artist=h.artist;row.title=tidyTitle(h.title);row.year=h.year;row.art=h.art;row.src=h.src;row.status="found";row.checked=true;
+          var same=function(c){return nrm(c.artist)===nrm(row.artist)&&nrm(c.title)===nrm(row.title)};
+          if(S.cds.some(same)){row.status="dup";row.checked=false}else if(scan.rows.some(function(o){return same(o)&&o.artist})){row.status="dupscan";row.checked=false}
+          n++}else miss++;
+        addRow(row)}}
+    scan.busy=false;
+    setSStat(!n&&!miss?(nob?"I couldn't find a barcode in that photo. Get closer, keep it flat and in focus, and avoid glare.":"")
+      :(n?"Found "+n+" CD"+(n===1?"":"s")+". ":"")+(miss?miss+" barcode"+(miss===1?"":"s")+" not in the music database: type the names in. ":"")+(nob?nob+" photo"+(nob===1?"":"s")+" had no readable barcode.":""));
   }catch(e){scan.busy=false;setSStat("Couldn't read that photo. Check your internet connection and try again.")}
 }
 function loadTess(){return window.Tesseract?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";t.onload=res;t.onerror=function(){rej(new Error("load"))};document.head.appendChild(t)})}
@@ -848,7 +900,8 @@ app.addEventListener("input",function(e){
     c[t.dataset.f]=t.value;save();
     if(t.dataset.f==="shelf"){location.hash=c.shelf+"/"+c.id;toast("Moved to "+shelfById(t.value).name)}}
 });
-app.addEventListener("change",function(e){if(e.target.id==="coverfile"){var cf=e.target.files[0];e.target.value="";if(cf)processCover(cf)}
+app.addEventListener("change",function(e){if(e.target.id==="barfile"){var bf=Array.prototype.slice.call(e.target.files);e.target.value="";processBarcodes(bf)}
+  if(e.target.id==="coverfile"){var cf=e.target.files[0];e.target.value="";if(cf)processCover(cf)}
   if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
 window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
