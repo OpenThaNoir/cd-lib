@@ -178,7 +178,10 @@ async function fetchArt(c){   // -> {art, src} or null
   if(!u)u=await mbLookup(c);
   return u;
 }
-async function getJSON(url){var r=await fetch(url);if(!r.ok)throw new Error("http "+r.status);return r.json()}
+async function getJSON(url,retries){
+  var r=await fetch(url);
+  if(!r.ok){if((r.status===503||r.status===429)&&retries>0){await new Promise(function(x){setTimeout(x,5000)});return getJSON(url,retries-1)}throw new Error("http "+r.status)}
+  return r.json()}
 async function fetchTracks(c){   // -> text, one track per line, or null
   if(!c.src){var f=await fetchArt(c);if(!f)return null;c.src=f.src;if(!c.art&&f.art)c.art=f.art}
   var lines=[];
@@ -491,7 +494,7 @@ async function mbPair(parts,frac){
   var orders=[[parts[0],parts[1]],[parts[1],parts[0]]];
   for(var oi=0;oi<2;oi++){
     var ar=orders[oi][0].replace(/["\\]/g," "),ti=orders[oi][1].replace(/["\\]/g," ");
-    var j=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=6&query="+encodeURIComponent('releasegroup:"'+ti+'" AND artist:"'+ar+'" AND primarytype:album'))});
+    var j=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=6&query="+encodeURIComponent('releasegroup:"'+ti+'" AND artist:"'+ar+'" AND primarytype:album'),2)});
     var g=(j["release-groups"]||[]).find(function(x){var ac=(x["artist-credit"]||[]).map(function(a){return a.name}).join(" ");
       return frac(ar," "+nrm(ac)+" ")>=.6&&frac(ti," "+nrm(x.title)+" ")>=.6});
     if(g){var u="https://coverartarchive.org/release-group/"+g.id+"/front-250",art="";
