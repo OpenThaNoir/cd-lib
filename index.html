@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CD Log</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#b4451f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CD Log">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b18;--mute:#6f6a60;--line:#e4dfd3;--acc:#b4451f;--acc2:#8a3315;--ok:#2f7a4d}
+@media (prefers-color-scheme:dark){:root{--bg:#171512;--card:#211e1a;--ink:#f1ece2;--mute:#9b9486;--line:#363128;--acc:#e0764a;--acc2:#f19a74;--ok:#6cc08c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{margin:0;font-size:26px;letter-spacing:-.02em}
+.count{color:var(--mute);font-size:14px}
+.status{font-size:12px;color:var(--mute)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+form.add{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.f{display:flex;flex-direction:column;gap:3px;grid-column:span 2}
+.f.w3{grid-column:span 3}.f.w1{grid-column:span 1}.f.w6{grid-column:span 6}
+label{font-size:12px;color:var(--mute)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:-1px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
+button.primary:hover{background:var(--acc2)}
+button.ghost:hover{border-color:var(--acc)}
+button.danger{color:#c0392b}
+.actions{grid-column:span 6;display:flex;gap:8px;align-items:center}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.toolbar input[type=search]{flex:1;min-width:180px}
+.toolbar select{width:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--mute);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.t{font-weight:600}
+.sub{color:var(--mute);font-size:13px;font-weight:400}
+.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
+.row-actions{white-space:nowrap;text-align:right}
+.row-actions button{padding:3px 8px;font-size:13px}
+.empty{padding:30px;text-align:center;color:var(--mute)}
+details{margin-top:16px}
+summary{cursor:pointer;color:var(--mute)}
+textarea.bulk{min-height:110px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.msg{font-size:13px;color:var(--ok);min-height:18px}
+@media(max-width:640px){
+ form.add{grid-template-columns:repeat(2,1fr)}
+ .f,.f.w3,.f.w1{grid-column:span 1}.f.w6,.actions{grid-column:span 2}
+ .hide-s{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+ <div><h1>💿 CD Log</h1><div class="count" id="count"></div></div>
+ <div class="status" id="status">Loading…</div>
+</header>
+
+<form class="card add" id="form" autocomplete="off">
+ <div class="f w3"><label for="artist">Artist *</label><input id="artist" required></div>
+ <div class="f w3"><label for="title">Album title *</label><input id="title" required></div>
+ <div class="f w1"><label for="year">Year</label><input id="year" inputmode="numeric" maxlength="4"></div>
+ <div class="f"><label for="genre">Genre</label><input id="genre" list="genres"></div>
+ <div class="f"><label for="cond">Condition</label>
+  <select id="cond"><option value="">—</option><option>Mint</option><option>Near Mint</option><option>Very Good</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
+ <div class="f w1"><label for="qty">Qty</label><input id="qty" type="number" min="1" value="1"></div>
+ <div class="f w3"><label for="loc">Location / shelf</label><input id="loc" placeholder="e.g. Box 2"></div>
+ <div class="f w3"><label for="notes">Notes</label><input id="notes" placeholder="Edition, label, barcode…"></div>
+ <div class="actions">
+  <button class="primary" type="submit" id="saveBtn">Add CD</button>
+  <button type="button" class="ghost" id="cancelEdit" hidden>Cancel edit</button>
+  <span class="msg" id="msg"></span>
+ </div>
+</form>
+<datalist id="genres"></datalist>
+
+<div class="card">
+ <div class="toolbar">
+  <input type="search" id="q" placeholder="Search artist, title, notes…">
+  <select id="condFilter"><option value="">All conditions</option></select>
+  <select id="locFilter"><option value="">All locations</option></select>
+ </div>
+ <div style="overflow-x:auto">
+ <table>
+  <thead><tr>
+   <th data-k="artist">Artist ▾</th><th data-k="title">Title</th>
+   <th data-k="year" class="hide-s">Year</th><th data-k="genre" class="hide-s">Genre</th>
+   <th data-k="cond" class="hide-s">Condition</th><th data-k="loc" class="hide-s">Location</th><th></th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+ </table>
+ </div>
+ <div class="empty" id="empty" hidden>No CDs yet. Add your first one above.</div>
+</div>
+
+<details class="card" style="margin-top:16px">
+ <summary>Import / export</summary>
+ <p class="sub">Export your whole collection as CSV, or paste CSV rows to import. Columns: artist, title, year, genre, condition, qty, location, notes (first row may be a header).</p>
+ <div class="toolbar">
+  <button class="ghost" id="dl">Download CSV</button>
+  <button class="ghost" id="copy">Copy CSV</button>
+  <button class="ghost" id="importFile">Import CSV file</button>
+  <input type="file" id="file" accept=".csv,text/csv" hidden>
+ </div>
+ <textarea class="bulk" id="bulk" placeholder="Paste CSV here to import…"></textarea>
+ <div class="toolbar" style="margin-top:8px"><button class="ghost" id="importBtn">Import pasted rows</button><span class="msg" id="msg2"></span></div>
+</details>
+</div>
+
+<script>
+(function(){
+"use strict";
+var items=[], editing=null, sortK="artist", sortDir=1, store=null, loaded=false, saveTimer=null, saving=false, dirty=false;
+var $=function(id){return document.getElementById(id)};
+var LS="cdlog.v1";
+
+/* ---------- storage: claude db (private to viewer) with localStorage fallback ---------- */
+function lsRead(){try{return JSON.parse(localStorage.getItem(LS)||"[]")}catch(e){return []}}
+function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(items))}catch(e){}}
+function dataOf(s){ if(!s) return null; var d=(typeof s.data==="function")?s.data():s.data; if(d===undefined) d=s; return d; }
+var baseStatus="";
+function setStatus(t){$("status").textContent=t}
+
+async function init(){
+  items=lsRead(); store={save:function(){lsWrite();return Promise.resolve();}};
+  baseStatus="Saved on this device"; setStatus(baseStatus); loaded=true; render();
+  if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
+  if(navigator.storage&&navigator.storage.persist){ navigator.storage.persist().catch(function(){}); }
+}
+
+function persist(){
+  dirty=true;
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(flush,400);
+}
+async function flush(){
+  if(saving){saveTimer=setTimeout(flush,300);return;}
+  if(!dirty||!store)return;
+  dirty=false; saving=true;
+  try{ lsWrite(); await store.save(); setStatus(baseStatus); }
+  catch(e){ setStatus("Cloud save failed — kept in this browser"); }
+  saving=false;
+}
+
+/* ---------- helpers ---------- */
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function norm(s){return String(s||"").toLowerCase()}
+function flash(id,t){var m=$(id);m.textContent=t;setTimeout(function(){m.textContent=""},2500)}
+
+/* ---------- render ---------- */
+function fillSelect(sel,vals,label){
+  var cur=sel.value; sel.innerHTML='<option value="">'+label+'</option>'+vals.map(function(v){return '<option>'+esc(v)+'</option>'}).join("");
+  if(vals.indexOf(cur)>-1) sel.value=cur;
+}
+function uniq(k){var m={};items.forEach(function(i){if(i[k])m[i[k]]=1});return Object.keys(m).sort()}
+
+function render(){
+  var q=norm($("q").value),cf=$("condFilter").value,lf=$("locFilter").value;
+  fillSelect($("condFilter"),uniq("cond"),"All conditions");
+  fillSelect($("locFilter"),uniq("loc"),"All locations");
+  $("genres").innerHTML=uniq("genre").map(function(g){return '<option value="'+esc(g)+'">'}).join("");
+  var list=items.filter(function(i){
+    if(cf&&i.cond!==cf)return false; if(lf&&i.loc!==lf)return false;
+    if(!q)return true;
+    return norm([i.artist,i.title,i.genre,i.notes,i.loc,i.year].join(" ")).indexOf(q)>-1;
+  });
+  list.sort(function(a,b){
+    var x=a[sortK],y=b[sortK];
+    if(sortK==="year"){x=+x||0;y=+y||0;return (x-y)*sortDir||cmp(a.title,b.title)}
+    return cmp(x,y)*sortDir||cmp(a.title,b.title);
+  });
+  var total=items.reduce(function(n,i){return n+(+i.qty||1)},0);
+  $("count").textContent=items.length+" album"+(items.length===1?"":"s")+(total!==items.length?" · "+total+" discs":"")+(list.length!==items.length?" · "+list.length+" shown":"");
+  $("empty").hidden=list.length>0; $("empty").textContent=items.length?"No matches.":"No CDs yet. Add your first one above.";
+  $("rows").innerHTML=list.map(function(i){
+    return '<tr><td>'+esc(i.artist)+'</td><td class="t">'+esc(i.title)+(i.notes?'<div class="sub">'+esc(i.notes)+'</div>':'')+(+i.qty>1?' <span class="tag">×'+esc(i.qty)+'</span>':'')+'</td>'
+     +'<td class="hide-s">'+esc(i.year)+'</td><td class="hide-s">'+esc(i.genre)+'</td><td class="hide-s">'+esc(i.cond)+'</td><td class="hide-s">'+esc(i.loc)+'</td>'
+     +'<td class="row-actions"><button class="ghost" data-edit="'+i.id+'">Edit</button> <button class="danger" data-del="'+i.id+'">Delete</button></td></tr>';
+  }).join("");
+}
+function cmp(a,b){return norm(a).localeCompare(norm(b),undefined,{numeric:true})}
+
+/* ---------- add / edit ---------- */
+var F=["artist","title","year","genre","cond","qty","loc","notes"];
+function readForm(){var o={};F.forEach(function(k){o[k]=$(k).value.trim()});o.qty=Math.max(1,parseInt(o.qty,10)||1);return o}
+function clearForm(){F.forEach(function(k){$(k).value=""});$("qty").value=1;editing=null;$("saveBtn").textContent="Add CD";$("cancelEdit").hidden=true}
+$("form").addEventListener("submit",function(e){
+  e.preventDefault(); if(!loaded)return;
+  var o=readForm(); if(!o.artist||!o.title)return;
+  if(editing){ var i=items.find(function(x){return x.id===editing}); if(i)Object.assign(i,o); flash("msg","Updated"); clearForm(); }
+  else{
+    var dup=items.some(function(x){return norm(x.artist)===norm(o.artist)&&norm(x.title)===norm(o.title)});
+    o.id=uid(); o.added=Date.now(); items.push(o);
+    flash("msg",dup?"Added (you already had this one — now listed twice)":"Added");
+    // keep artist/genre/location handy for batch entry
+    var keep={artist:o.artist,genre:o.genre,loc:o.loc,cond:o.cond}; clearForm(); Object.keys(keep).forEach(function(k){$(k).value=keep[k]});
+    $("title").focus();
+  }
+  persist(); render();
+});
+$("cancelEdit").onclick=clearForm;
+$("rows").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b)return;
+  if(b.dataset.edit){
+    var i=items.find(function(x){return x.id===b.dataset.edit}); if(!i)return;
+    F.forEach(function(k){$(k).value=i[k]==null?"":i[k]}); editing=i.id;
+    $("saveBtn").textContent="Save changes"; $("cancelEdit").hidden=false; window.scrollTo({top:0,behavior:"smooth"}); $("title").focus();
+  }else if(b.dataset.del){
+    if(b.dataset.armed){ items=items.filter(function(x){return x.id!==b.dataset.del}); persist(); render(); }
+    else{ b.dataset.armed=1; b.textContent="Sure?"; setTimeout(function(){b.dataset.armed="";b.textContent="Delete"},2500); }
+  }
+});
+["q","condFilter","locFilter"].forEach(function(id){$(id).addEventListener("input",render)});
+document.querySelectorAll("th[data-k]").forEach(function(th){th.onclick=function(){
+  var k=th.dataset.k; if(sortK===k)sortDir=-sortDir; else{sortK=k;sortDir=1}
+  document.querySelectorAll("th[data-k]").forEach(function(t){t.textContent=t.textContent.replace(/ [▾▴]$/,"")});
+  th.textContent+=sortDir===1?" ▾":" ▴"; render();
+}});
+
+/* ---------- CSV ---------- */
+function toCSV(){
+  var cols=["artist","title","year","genre","cond","qty","loc","notes"],head=["artist","title","year","genre","condition","qty","location","notes"];
+  var q=function(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  return [head.join(",")].concat(items.map(function(i){return cols.map(function(c){return q(i[c])}).join(",")})).join("\n");
+}
+function parseCSV(t){
+  var rows=[],r=[],c="",inq=false;
+  for(var i=0;i<t.length;i++){var ch=t[i];
+    if(inq){ if(ch==='"'){ if(t[i+1]==='"'){c+='"';i++} else inq=false } else c+=ch }
+    else if(ch==='"') inq=true;
+    else if(ch===","||ch==="\t"){r.push(c);c=""}
+    else if(ch==="\n"||ch==="\r"){ if(ch==="\r"&&t[i+1]==="\n")i++; r.push(c);c=""; if(r.some(function(x){return x.trim()}))rows.push(r); r=[] }
+    else c+=ch;
+  }
+  r.push(c); if(r.some(function(x){return x.trim()}))rows.push(r); return rows;
+}
+function importText(t){
+  var rows=parseCSV(t); if(!rows.length){flash("msg2","Nothing to import");return}
+  if(/^artist$/i.test(rows[0][0].trim()))rows.shift();
+  var n=0;
+  rows.forEach(function(r){
+    if(!(r[0]||"").trim()||!(r[1]||"").trim())return;
+    items.push({id:uid(),added:Date.now(),artist:r[0].trim(),title:r[1].trim(),year:(r[2]||"").trim(),genre:(r[3]||"").trim(),cond:(r[4]||"").trim(),qty:Math.max(1,parseInt(r[5],10)||1),loc:(r[6]||"").trim(),notes:(r[7]||"").trim()});n++;
+  });
+  persist(); render(); flash("msg2","Imported "+n+" CD"+(n===1?"":"s"));
+}
+$("importBtn").onclick=function(){importText($("bulk").value);$("bulk").value=""};
+$("importFile").onclick=function(){$("file").click()};
+$("file").onchange=function(){var f=this.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){importText(String(rd.result))};rd.readAsText(f);this.value=""};
+$("copy").onclick=function(){
+  try{navigator.clipboard.writeText(toCSV()).then(function(){flash("msg2","Copied")},function(){flash("msg2","Copy blocked — select from the box instead");$("bulk").value=toCSV()})}
+  catch(e){$("bulk").value=toCSV();flash("msg2","Copy blocked — CSV placed in the box")}
+};
+$("dl").onclick=function(){
+  var u=URL.createObjectURL(new Blob([toCSV()],{type:"text/csv"})),l=document.createElement("a");
+  l.href=u;l.download="cd-collection.csv";document.body.appendChild(l);l.click();l.remove();
+  setTimeout(function(){URL.revokeObjectURL(u)},1000);flash("msg2","Downloaded");
+};
+
+init();
+})();
+</script>
+</body>
+</html>
