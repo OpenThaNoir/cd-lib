@@ -143,9 +143,22 @@ async function lookup(term,c){
         ||hits.find(function(x){return close(x.collectionName,c.title)&&close(x.artistName,c.artist)});
   return best?best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."):null;
 }
+// fallback: MusicBrainz + Cover Art Archive (covers albums missing from Apple's catalog)
+async function mbLookup(c){
+  var q='releasegroup:"'+c.title.replace(/["\\]/g," ")+'" AND artist:"'+c.artist.replace(/["\\]/g," ")+'" AND primarytype:album';
+  var r=await fetch("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=8&query="+encodeURIComponent(q));
+  if(!r.ok)throw new Error("http "+r.status);
+  var j=await r.json(), g=(j["release-groups"]||[]).find(function(x){
+    var ac=(x["artist-credit"]||[]).map(function(a){return a.name}).join(" ");
+    return nrm(x.title)===nrm(c.title)&&close(ac,c.artist)});
+  if(!g)return null;
+  var u="https://coverartarchive.org/release-group/"+g.id+"/front-250";
+  try{var h=await fetch(u);return h.ok?u:null}catch(e){return null}
+}
 async function fetchArt(c){
   var u=await lookup(c.artist+" "+c.title,c);
   if(!u){var t2=c.title.replace(/\(.*?\)|\[.*?\]/g,"").trim();if(t2&&t2!==c.title)u=await lookup(c.artist+" "+t2,c)}
+  if(!u)u=await mbLookup(c);
   return u;
 }
 var artQ=[],artBusy=false,artDown=false;
