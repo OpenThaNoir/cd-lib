@@ -402,6 +402,9 @@ function scanView(sid){
    +'<div class="quick"><p class="sub" style="margin:0">Take a bright, straight-on photo of a few spines at a time, with the writing big and in focus. You can pick several photos. Always check the list before adding.</p>'
    +'<label class="btn" for="scanfile" style="text-align:center;display:block">Take or choose photos</label>'
    +'<input type="file" id="scanfile" accept="image/*" multiple hidden></div>'
+   +'<div class="quick"><p class="sub" style="margin:0">Or add every studio album by an artist:</p>'
+   +'<input id="artistq" type="text" placeholder="Artist name, e.g. Metallica" autocomplete="off" style="width:100%">'
+   +'<button class="btn alt" data-a="artistGo" style="width:100%">Find studio albums</button></div>'
    +'<div class="sub" id="sstat" role="status" aria-live="polite" style="margin:0 0 .8rem">'+esc(scan.statusText||"")+'</div>'
    +'<div id="srows"></div>'
    +'<div class="sbar"><button class="btn" data-a="scanAdd" id="scanAddBtn" style="width:100%">Add 0 CDs</button></div>';
@@ -412,7 +415,7 @@ function rowHTML(r){
    +'<span class="art" aria-hidden="true">'+(r.art?'<img src="'+esc(r.art)+'" alt="" referrerpolicy="no-referrer">':DISC)+'</span></div>'
    +'<label>Artist<input class="field" data-sf="artist" value="'+esc(r.artist)+'"></label>'
    +'<label>Title<input class="field" data-sf="title" value="'+esc(r.title)+'"></label>'
-   +'<div class="sub st">'+esc(rowStatus(r))+'</div><div class="sub">Read from photo: “'+esc(r.ocr)+'”</div>'
+   +'<div class="sub st">'+esc(rowStatus(r))+'</div><div class="sub">'+(r.ocr==="Artist lookup"?"From the artist's album list":"Read from photo: “"+esc(r.ocr)+"”")+'</div>'
    +'<button class="btn bad" data-a="skipRow" data-id="'+r.id+'">Remove</button></div>';
 }
 function paintRows(){var e=document.getElementById("srows");if(e)e.innerHTML=scan.rows.map(rowHTML).join("")}
@@ -423,6 +426,22 @@ function refreshRow(r){
   var typing=el.contains(document.activeElement);
   if(typing){el.querySelector(".st").textContent=rowStatus(r)}else{el.outerHTML=rowHTML(r)}
   updateBar();
+}
+async function findArtist(){
+  var q=(document.getElementById("artistq")||{}).value||"";q=q.trim();if(!q||scan.busy)return;
+  scan.busy=true;setSStat("Looking up studio albums by "+q+"…");
+  try{
+    var qq=q.replace(/["\\]/g," "),j=await getJSON("https://musicbrainz.org/ws/2/release-group/?fmt=json&limit=100&query="+encodeURIComponent('artist:"'+qq+'" AND primarytype:album AND status:official'),2);
+    var want=nrm(q),seen={},list=(j["release-groups"]||[]).filter(function(x){
+      if((x["secondary-types"]||[]).length)return false;
+      var ac=(x["artist-credit"]||[]);return ac.length&&nrm(ac[0].name)===want&&ac.length===1}).sort(function(a,b){return (a["first-release-date"]||"9").localeCompare(b["first-release-date"]||"9")});
+    var n=0;
+    list.forEach(function(x){var k=nrm(x.title);if(seen[k])return;seen[k]=1;
+      if(S.cds.some(function(c){return nrm(c.artist)===want&&nrm(c.title)===k}))return;
+      n++;addRow({id:uid(),ocr:"Artist lookup",artist:x["artist-credit"][0].name,title:x.title,art:"https://coverartarchive.org/release-group/"+x.id+"/front-250",src:{m:x.id},status:"found",checked:true})});
+    scan.busy=false;
+    setSStat(n?"Found "+n+" studio albums. Uncheck any you don't own, then press Add. Covers will fill in after.":"No studio albums found for that name. Check the spelling.");
+  }catch(e){scan.busy=false;setSStat("Couldn't look that up right now (the music database may be busy). Wait a minute and try again.")}
 }
 function loadTess(){return window.Tesseract?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";t.onload=res;t.onerror=function(){rej(new Error("load"))};document.head.appendChild(t)})}
 async function loadImage(f){
@@ -609,6 +628,7 @@ app.addEventListener("click",function(e){
   else if(a==="display")displaySheet();
   else if(a==="shelfMenu")shelfMenu(route());
   else if(a==="openCd"){location.hash=route()+"/"+id}
+  else if(a==="artistGo"){findArtist()}
   else if(a==="scan"){location.hash=route()+"/scan"}
   else if(a==="scanAdd")addScanned();
   else if(a==="skipRow"){scan.rows=scan.rows.filter(function(r){return r.id!==id});var e=document.querySelector('[data-row="'+id+'"]');if(e)e.remove();updateBar()}
