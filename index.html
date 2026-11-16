@@ -470,7 +470,7 @@ function shelfMenu(id){
       +'<button class="btn bad" id="allDel">Delete shelf and its '+n+' CD'+(n===1?"":"s")+'</button><button class="btn alt" id="x">Cancel</button>');
     d2.querySelector("#x").onclick=closeSheet;
     var mv=d2.querySelector("#moveDel");if(mv)mv.onclick=function(){var to=d2.querySelector("#mv").value;S.cds.forEach(function(c){if(c.shelf===id)c.shelf=to});S.shelves=others;save();closeSheet();go(null);toast("Moved "+n+" CD"+(n===1?"":"s"))};
-    d2.querySelector("#allDel").onclick=function(){S.cds=S.cds.filter(function(c){return c.shelf!==id});S.shelves=others;save();closeSheet();go(null)};
+    d2.querySelector("#allDel").onclick=function(){confirmSheet("Delete the shelf and "+n+" CD"+(n===1?"":"s")+"?","“"+esc(s.name)+"” and everything on it will be gone. This can't be undone.","Yes, delete all",function(){S.cds=S.cds.filter(function(c){return c.shelf!==id});S.shelves=others;save();go(null)})};
   };
 }
 
@@ -810,7 +810,7 @@ app.addEventListener("click",function(e){
     if(c3.tracks&&c3.tracks.trim())confirmSheet("Replace tracklist?","This will replace what is written now with a fresh lookup.","Replace",function(){c3.src=null;loadTracks(c3,true)});
     else{c3.src=null;loadTracks(c3,true)}}
   else if(a==="noArt"){var c2=S.cds.find(function(x){return x.id===id});if(c2){c2.art="";c2.artTried=Date.now();save();render()}}
-  else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){var sh=route();S.cds=S.cds.filter(function(c){return c.id!==id});save();if(sh)location.hash=sh;else render()});
+  else if(a==="delCd"){var dc=S.cds.find(function(x){return x.id===id});confirmSheet("Delete this CD?",(dc?"“"+esc(dc.title)+"” by "+esc(dc.artist)+". ":"")+"This can't be undone.","Yes, delete it",function(){var sh=route();S.cds=S.cds.filter(function(c){return c.id!==id});save();if(sh)location.hash=sh;else render()})}
 });
 app.addEventListener("submit",function(e){
   if(e.target.id!=="add")return;e.preventDefault();
