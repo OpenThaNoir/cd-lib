@@ -67,6 +67,13 @@ html[data-theme="hclight"] .letter{color:#000}
 .cd .meta{color:var(--mute);font-size:.9rem}
 .edit{padding:.6rem .9rem 1rem;display:grid;gap:.7rem;border-top:var(--bw) solid var(--line)}
 .edit label,.sheet label{font-size:.95rem;color:var(--ink);display:grid;gap:.25rem;font-weight:600}
+.scanbtn{width:100%;margin:0 0 1rem}
+.srow{background:var(--panel);border:var(--bw) solid var(--line);border-radius:1rem;padding:.8rem;margin-bottom:.8rem;display:grid;gap:.6rem}
+.srow label{font-size:.95rem;font-weight:600;display:grid;gap:.25rem}
+.srow-top{display:flex;align-items:center;justify-content:space-between;gap:.8rem}
+.chk{display:flex!important;align-items:center;gap:.6rem;font-size:1.15rem!important}
+.chk input{width:1.9rem;height:1.9rem;accent-color:var(--acc)}
+.sbar{position:fixed;left:0;right:0;bottom:0;padding:.7rem 1rem calc(.7rem + env(safe-area-inset-bottom));background:var(--bg);border-top:var(--bw) solid var(--line);max-width:44rem;margin:0 auto;z-index:6}
 .cd .go{flex:none;font-size:1.8rem;color:var(--mute);line-height:1}
 .hero{display:grid;place-items:center;margin:.2rem 0 1.2rem}
 .hero .art{width:min(15rem,70vw);border-radius:.7rem;border:var(--bw) solid var(--line)}
@@ -132,6 +139,7 @@ function shelfById(id){return S.shelves.find(function(s){return s.id===id})}
 function cdsOn(id){return S.cds.filter(function(c){return c.shelf===id})}
 function hue(str){var h=0;for(var i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))>>>0;return h%360}
 function route(){var h=location.hash.slice(1).split("/")[0];return h&&shelfById(h)?h:null}
+function routeScan(){var p=location.hash.slice(1).split("/");return !!route()&&p[1]==="scan"}
 function routeCd(){var p=location.hash.slice(1).split("/");var sid=route();return sid&&p[1]?(S.cds.find(function(c){return c.id===p[1]&&c.shelf===sid})||null):null}
 function go(id){ui.open=null;ui.q="";location.hash=id||"";if(!id)render()}
 var toastT;function toast(t){var e=document.createElement("div");e.className="toast";e.setAttribute("role","status");e.textContent=t;document.body.appendChild(e);clearTimeout(toastT);setTimeout(function(){e.remove()},4500)}
@@ -249,6 +257,7 @@ function shelfView(id){
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="shelfMenu" aria-label="Shelf options">Options</button></div>';
   h+='<form class="quick" id="add" autocomplete="off"><input class="field" id="fa" placeholder="Artist" value="'+esc(ui.lastArtist||"")+'" enterkeyhint="next">'
    +'<div class="row"><input class="field" id="ft" placeholder="Album title" enterkeyhint="done"><button class="btn" type="submit">Add</button></div></form>';
+  h+='<button class="btn alt scanbtn" data-a="scan">📷 Scan CD spines from a photo</button>';
   if(!list.length) h+='<div class="empty"><b>🎶</b>This shelf is empty.<br>Add your first CD above.</div>';
   var last="";
   list.forEach(function(c){
@@ -282,6 +291,7 @@ function detailView(c){
 }
 
 function render(){
+  if(routeScan()){var ssid=route();if(scan.sid!==ssid)scan={sid:ssid,rows:[],busy:false,pending:0};app.innerHTML=scanView(ssid);paintRows();updateBar();return}
   var id=route();
   var dcd=routeCd();
   app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
@@ -374,16 +384,127 @@ function displaySheet(){
     d.querySelectorAll("[data-theme]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.theme===P.theme))})});
 }
 
+
+/* ---------- bulk add: scan spines from photos (text reading happens on this device) ---------- */
+var scan={sid:null,rows:[],busy:false,pending:0};
+var gate=Promise.resolve();
+function paced(fn){var run=gate.then(fn);gate=run.catch(function(){}).then(function(){return new Promise(function(r){setTimeout(r,3200)})});return run}   // stay under Apple's rate limit
+function setSStat(t){var e=document.getElementById("sstat");if(e)e.textContent=t}
+function scanView(sid){
+  var s=shelfById(sid);
+  return '<div class="bar"><button class="icon" data-a="back" aria-label="Back to shelf '+esc(s.name)+'">←</button>'
+   +'<h1>Scan spines<span class="sub">Adding to '+esc(s.name)+'</span></h1>'
+   +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button></div>'
+   +'<div class="quick"><p class="sub" style="margin:0">Take a bright, straight-on photo of a few spines at a time, with the writing big and in focus. You can pick several photos. Always check the list before adding.</p>'
+   +'<label class="btn" for="scanfile" style="text-align:center;display:block">Take or choose photos</label>'
+   +'<input type="file" id="scanfile" accept="image/*" multiple hidden></div>'
+   +'<div class="sub" id="sstat" role="status" aria-live="polite" style="margin:0 0 .8rem">'+esc(scan.statusText||"")+'</div>'
+   +'<div id="srows"></div>'
+   +'<div class="sbar"><button class="btn" data-a="scanAdd" id="scanAddBtn" style="width:100%">Add 0 CDs</button></div>';
+}
+function rowStatus(r){return {looking:"Looking it up…",found:"Possible match. Check it is right.",none:"No match found. Fix the names or remove it.",dup:"Already in your collection.",dupscan:"Same album as another row.",error:"Couldn't look it up (offline?). Fix the names or remove it."}[r.status]||""}
+function rowHTML(r){
+  return '<div class="srow" data-row="'+r.id+'"><div class="srow-top"><label class="chk"><input type="checkbox" data-sc="ok"'+(r.checked?" checked":"")+'><span>Add</span></label>'
+   +'<span class="art" aria-hidden="true">'+(r.art?'<img src="'+esc(r.art)+'" alt="" referrerpolicy="no-referrer">':DISC)+'</span></div>'
+   +'<label>Artist<input class="field" data-sf="artist" value="'+esc(r.artist)+'"></label>'
+   +'<label>Title<input class="field" data-sf="title" value="'+esc(r.title)+'"></label>'
+   +'<div class="sub st">'+esc(rowStatus(r))+'</div><div class="sub">Read from photo: “'+esc(r.ocr)+'”</div>'
+   +'<button class="btn bad" data-a="skipRow" data-id="'+r.id+'">Remove</button></div>';
+}
+function paintRows(){var e=document.getElementById("srows");if(e)e.innerHTML=scan.rows.map(rowHTML).join("")}
+function updateBar(){var n=scan.rows.filter(function(r){return r.checked&&r.artist.trim()&&r.title.trim()}).length;
+  var b=document.getElementById("scanAddBtn");if(b){b.textContent="Add "+n+" CD"+(n===1?"":"s");b.disabled=!n;b.style.opacity=n?1:.5}}
+function refreshRow(r){
+  var el=document.querySelector('[data-row="'+r.id+'"]');if(!el)return;
+  var typing=el.contains(document.activeElement);
+  if(typing){el.querySelector(".st").textContent=rowStatus(r)}else{el.outerHTML=rowHTML(r)}
+  updateBar();
+}
+function loadTess(){return window.Tesseract?Promise.resolve():new Promise(function(res,rej){var t=document.createElement("script");t.src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";t.onload=res;t.onerror=function(){rej(new Error("load"))};document.head.appendChild(t)})}
+async function loadImage(f){
+  try{if(window.createImageBitmap)return await createImageBitmap(f,{imageOrientation:"from-image"})}catch(e){}
+  return await new Promise(function(res,rej){var u=URL.createObjectURL(f),i=new Image();i.onload=function(){res(i)};i.onerror=rej;i.src=u})
+}
+function baseCanvas(img){
+  var w=img.width,h=img.height,k=Math.min(1,2400/Math.max(w,h)),c=document.createElement("canvas");
+  c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);return c}
+function turned(src,deg){
+  var c=document.createElement("canvas"),w=src.width,h=src.height;
+  if(deg===0){c.width=w;c.height=h}else{c.width=h;c.height=w}
+  var x=c.getContext("2d");try{x.filter="grayscale(1) contrast(1.35)"}catch(e){}
+  x.translate(c.width/2,c.height/2);x.rotate(deg*Math.PI/180);x.drawImage(src,-w/2,-h/2);return c}
+function cleanLine(t){return String(t||"").replace(/[^A-Za-z0-9&'’.,!?:\-\/() ]+/g," ").replace(/\s+/g," ").trim()}
+function goodLine(t,conf){
+  var letters=(t.match(/[A-Za-z]/g)||[]).length;
+  return conf>=50&&letters>=4&&letters/t.length>=.6&&/[A-Za-z]{2,}/.test(t)&&t.split(" ").some(function(w){return w.replace(/[^A-Za-z]/g,"").length>=3})}
+async function processFiles(files){
+  if(scan.busy||!files.length)return;scan.busy=true;
+  var found=[];
+  try{
+    scan.statusText="Loading the text reader (first time only, a few MB)…";setSStat(scan.statusText);
+    await loadTess();
+    var worker=await Tesseract.createWorker("eng");
+    for(var fi=0;fi<files.length;fi++){
+      var img=await loadImage(files[fi]),base=baseCanvas(img),degs=[0,90,270];
+      for(var di=0;di<degs.length;di++){
+        scan.statusText="Reading photo "+(fi+1)+" of "+files.length+", pass "+(di+1)+" of 3…";setSStat(scan.statusText);
+        var res=await worker.recognize(turned(base,degs[di])),d=res.data||{};
+        var lines=(d.lines&&d.lines.length)?d.lines.map(function(l){return{t:cleanLine(l.text),c:l.confidence}}):String(d.text||"").split("\n").map(function(t){return{t:cleanLine(t),c:d.confidence||0}});
+        lines.forEach(function(l){if(goodLine(l.t,l.c))found.push(l)});
+      }
+    }
+    await worker.terminate();
+  }catch(e){
+    scan.busy=false;scan.statusText="Couldn't load or run the text reader. Check your internet connection and try again.";setSStat(scan.statusText);return}
+  // de-duplicate (same text from different passes, or fragments of a longer line)
+  found.sort(function(a,b){return b.c-a.c});
+  var kept=[];found.forEach(function(l){var n=nrm(l.t);if(!n)return;
+    if(kept.some(function(k){var m=nrm(k.t);return m===n||m.indexOf(n)>-1||n.indexOf(m)>-1}))return;kept.push(l)});
+  kept=kept.slice(0,60);
+  if(!kept.length){scan.busy=false;scan.statusText="I couldn't read any text. Try a closer, brighter, straight-on photo of fewer spines.";setSStat(scan.statusText);return}
+  var fresh=kept.map(function(l){return{id:uid(),ocr:l.t,artist:"",title:l.t,art:"",src:null,status:"looking",checked:false}});
+  scan.rows=scan.rows.concat(fresh);paintRows();updateBar();
+  scan.pending+=fresh.length;scan.statusText="Found "+fresh.length+" possible CDs. Looking up each one…";setSStat(scan.statusText);
+  scan.busy=false;
+  fresh.forEach(function(r){matchRow(r).then(function(){refreshRow(r)}).then(function(){
+    scan.pending--;if(scan.pending<=0){scan.pending=0;scan.statusText="Done. Check each CD below, then press Add.";setSStat(scan.statusText)}})});
+}
+async function matchRow(r){
+  try{
+    var j=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=6&term="+encodeURIComponent(r.ocr))});
+    var toks=nrm(r.ocr).split(" ").filter(function(w){return w.length>=3}),best=null,bs=0;
+    (j.results||[]).forEach(function(x){if(!x.artworkUrl100)return;var hay=" "+nrm(x.artistName+" "+x.collectionName)+" ";
+      var m=toks.filter(function(t){return hay.indexOf(t)>-1}).length,sc=toks.length?m/toks.length:0;if(sc>bs&&m>=1){bs=sc;best=x}});
+    if(best&&bs>=.5){
+      r.artist=best.artistName;r.title=best.collectionName.replace(/\s+-\s+(Single|EP)$/i,"");
+      r.art=best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb.");r.src={i:best.collectionId};r.status="found";r.checked=true;
+      var same=function(c){return nrm(c.artist)===nrm(r.artist)&&nrm(c.title)===nrm(r.title)};
+      if(S.cds.some(same)){r.status="dup";r.checked=false}
+      else if(scan.rows.some(function(o){return o!==r&&o.status==="found"&&same(o)})){r.status="dupscan";r.checked=false}
+    }else{r.status="none"}
+  }catch(e){r.status="error"}
+}
+function addScanned(){
+  var sid=scan.sid,n=0;
+  scan.rows.forEach(function(r){if(!r.checked||!r.artist.trim()||!r.title.trim())return;
+    S.cds.push({id:uid(),shelf:sid,artist:r.artist.trim(),title:r.title.trim(),year:"",notes:"",art:r.art||"",artTried:r.art?Date.now():0,src:r.src||null});n++});
+  save();scan={sid:sid,rows:[],busy:false,pending:0};
+  toast("Added "+n+" CD"+(n===1?"":"s"));location.hash=sid;
+}
+
 /* ---------- events ---------- */
 app.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
   if(a==="open"||a==="gotoCd")go(id);
-  else if(a==="back"){var sh=route();if(routeCd()&&sh)location.hash=sh;else go(null)}
+  else if(a==="back"){var sh=route();if((routeCd()||routeScan())&&sh)location.hash=sh;else go(null)}
   else if(a==="newShelf")askName("New shelf","","Create",function(v){var s={id:uid(),name:v};S.shelves.push(s);save();go(s.id)});
   else if(a==="menu")mainMenu();
   else if(a==="display")displaySheet();
   else if(a==="shelfMenu")shelfMenu(route());
   else if(a==="openCd"){location.hash=route()+"/"+id}
+  else if(a==="scan"){location.hash=route()+"/scan"}
+  else if(a==="scanAdd")addScanned();
+  else if(a==="skipRow"){scan.rows=scan.rows.filter(function(r){return r.id!==id});var e=document.querySelector('[data-row="'+id+'"]');if(e)e.remove();updateBar()}
   else if(a==="findArt"){var c=S.cds.find(function(x){return x.id===id});if(!c)return;toast("Looking for the cover…");
     fetchArt(c).then(function(r){c.artTried=Date.now();if(r)c.src=r.src;if(r&&r.art){c.art=r.art;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
   else if(a==="findTracks"){var c3=S.cds.find(function(x){return x.id===id});if(!c3)return;
@@ -403,10 +524,13 @@ app.addEventListener("submit",function(e){
 app.addEventListener("input",function(e){
   var t=e.target;
   if(t.id==="q"){ui.q=t.value;render();return}
+  if(t.dataset&&(t.dataset.sf||t.dataset.sc)){var rw=t.closest("[data-row]"),sr=rw&&scan.rows.find(function(x){return x.id===rw.dataset.row});if(!sr)return;
+    if(t.dataset.sf)sr[t.dataset.sf]=t.value;else sr.checked=t.checked;updateBar();return}
   if(t.dataset&&t.dataset.f){var box=t.closest("[data-cd]"),c=S.cds.find(function(x){return x.id===box.dataset.cd});if(!c)return;
     c[t.dataset.f]=t.value;save();
     if(t.dataset.f==="shelf"){location.hash=c.shelf+"/"+c.id;toast("Moved to "+shelfById(t.value).name)}}
 });
+app.addEventListener("change",function(e){if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
 window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
 loadPrefs();load();render();
