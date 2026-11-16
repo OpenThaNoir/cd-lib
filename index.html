@@ -2,271 +2,289 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CD Log</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>CD Shelves</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<meta name="theme-color" content="#b4451f">
+<meta name="theme-color" content="#1c1814">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="CD Log">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CD Shelves">
 <style>
-:root{--bg:#f6f4ef;--card:#fff;--ink:#1d1b18;--mute:#6f6a60;--line:#e4dfd3;--acc:#b4451f;--acc2:#8a3315;--ok:#2f7a4d}
-@media (prefers-color-scheme:dark){:root{--bg:#171512;--card:#211e1a;--ink:#f1ece2;--mute:#9b9486;--line:#363128;--acc:#e0764a;--acc2:#f19a74;--ok:#6cc08c}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-.wrap{max-width:980px;margin:0 auto;padding:20px 16px 60px}
-header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-h1{margin:0;font-size:26px;letter-spacing:-.02em}
-.count{color:var(--mute);font-size:14px}
-.status{font-size:12px;color:var(--mute)}
-.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
-form.add{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
-.f{display:flex;flex-direction:column;gap:3px;grid-column:span 2}
-.f.w3{grid-column:span 3}.f.w1{grid-column:span 1}.f.w6{grid-column:span 6}
-label{font-size:12px;color:var(--mute)}
-input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
-input:focus,select:focus,textarea:focus{outline:2px solid var(--acc);outline-offset:-1px}
-button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 12px}
-button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
-button.primary:hover{background:var(--acc2)}
-button.ghost:hover{border-color:var(--acc)}
-button.danger{color:#c0392b}
-.actions{grid-column:span 6;display:flex;gap:8px;align-items:center}
-.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.toolbar input[type=search]{flex:1;min-width:180px}
-.toolbar select{width:auto}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:12px;color:var(--mute);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap}
-tr:last-child td{border-bottom:0}
-td.t{font-weight:600}
-.sub{color:var(--mute);font-size:13px;font-weight:400}
-.tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid var(--line);color:var(--mute)}
-.row-actions{white-space:nowrap;text-align:right}
-.row-actions button{padding:3px 8px;font-size:13px}
-.empty{padding:30px;text-align:center;color:var(--mute)}
-details{margin-top:16px}
-summary{cursor:pointer;color:var(--mute)}
-textarea.bulk{min-height:110px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
-.msg{font-size:13px;color:var(--ok);min-height:18px}
-@media(max-width:640px){
- form.add{grid-template-columns:repeat(2,1fr)}
- .f,.f.w3,.f.w1{grid-column:span 1}.f.w6,.actions{grid-column:span 2}
- .hide-s{display:none}
+:root{
+  --bg:#1c1814;--panel:#262019;--panel2:#2f2820;--line:#3d342a;
+  --ink:#f3ebdd;--mute:#a69a86;--acc:#e8a03c;--acc-ink:#1c1814;--danger:#e0624f;
+  --r:14px;
 }
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--ink)}
+body{font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100dvh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+.app{max-width:720px;margin:0 auto;padding:0 16px 96px}
+
+/* top bar */
+.bar{position:sticky;top:0;z-index:5;background:linear-gradient(var(--bg) 80%,transparent);
+  display:flex;align-items:center;gap:10px;padding:14px 0 10px}
+.bar h1{margin:0;font-size:24px;letter-spacing:-.02em;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .sub{display:block;font-size:13px;font-weight:400;color:var(--mute);letter-spacing:0}
+.icon{width:42px;height:42px;border-radius:12px;background:var(--panel);display:grid;place-items:center;font-size:18px;flex:none}
+.icon:active{background:var(--panel2)}
+
+/* shelves grid */
+.shelves{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
+.shelf{background:var(--panel);border-radius:var(--r);padding:14px 14px 0;text-align:left;display:block;width:100%;
+  border:1px solid var(--line);overflow:hidden}
+.shelf:active{transform:scale(.985)}
+.shelf .nm{font-weight:650;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.shelf .ct{color:var(--mute);font-size:13px;margin-bottom:12px}
+.spines{display:flex;align-items:flex-end;gap:2px;height:54px;padding:0 2px;
+  border-bottom:9px solid #6b4a2b;margin:0 -14px;padding-left:14px;padding-right:14px;
+  background:linear-gradient(transparent 60%,rgba(0,0,0,.18))}
+.spines i{display:block;width:7px;border-radius:2px 2px 0 0}
+.newshelf{border:2px dashed var(--line);background:none;color:var(--mute);min-height:128px;display:grid;place-items:center;
+  border-radius:var(--r);font-size:16px;width:100%}
+.newshelf b{display:block;font-size:28px;color:var(--acc);line-height:1}
+
+/* search */
+.search{width:100%;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 14px;margin:2px 0 14px}
+.search:focus,.field:focus{outline:2px solid var(--acc);outline-offset:-1px}
+
+/* shelf view */
+.quick{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;margin:2px 0 16px;display:grid;gap:8px}
+.quick .row{display:flex;gap:8px}
+.field{width:100%;min-width:0;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+.btn{background:var(--acc);color:var(--acc-ink);font-weight:700;border-radius:10px;padding:11px 16px;white-space:nowrap}
+.btn.alt{background:var(--panel2);color:var(--ink);font-weight:500}
+.btn.bad{background:none;color:var(--danger);border:1px solid var(--line)}
+.letter{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--acc);margin:18px 2px 6px}
+.cd{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin-bottom:6px;overflow:hidden}
+.cd>button{display:block;width:100%;text-align:left;padding:11px 14px}
+.cd .a{color:var(--mute);font-size:13px}
+.cd .t{font-weight:600}
+.cd .meta{color:var(--mute);font-size:12px}
+.edit{padding:4px 14px 14px;display:grid;gap:8px;border-top:1px solid var(--line)}
+.edit label{font-size:12px;color:var(--mute);display:grid;gap:3px}
+.edit .row{display:flex;gap:8px}
+.empty{text-align:center;color:var(--mute);padding:44px 10px}
+.empty b{display:block;font-size:38px;margin-bottom:6px}
+
+/* sheet / dialog */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet{background:var(--panel);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));display:grid;gap:12px;
+  border:1px solid var(--line);border-bottom:0}
+.sheet h2{margin:0;font-size:20px}
+.sheet p{margin:0;color:var(--mute);font-size:14px}
+.sheet .row{display:flex;gap:8px}
+.sheet .row>*{flex:1}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:99px;font-size:14px;z-index:30;box-shadow:0 6px 24px rgba(0,0,0,.4)}
+textarea.field{min-height:100px;font:13px ui-monospace,Menlo,monospace}
+.menu button.item{display:block;width:100%;text-align:left;padding:13px 14px;background:var(--panel2);border-radius:10px}
+.menu{display:grid;gap:8px}
 </style>
 </head>
 <body>
-<div class="wrap">
-<header>
- <div><h1>💿 CD Log</h1><div class="count" id="count"></div></div>
- <div class="status" id="status">Loading…</div>
-</header>
-
-<form class="card add" id="form" autocomplete="off">
- <div class="f w3"><label for="artist">Artist *</label><input id="artist" required></div>
- <div class="f w3"><label for="title">Album title *</label><input id="title" required></div>
- <div class="f w1"><label for="year">Year</label><input id="year" inputmode="numeric" maxlength="4"></div>
- <div class="f"><label for="genre">Genre</label><input id="genre" list="genres"></div>
- <div class="f"><label for="cond">Condition</label>
-  <select id="cond"><option value="">—</option><option>Mint</option><option>Near Mint</option><option>Very Good</option><option>Good</option><option>Fair</option><option>Poor</option></select></div>
- <div class="f w1"><label for="qty">Qty</label><input id="qty" type="number" min="1" value="1"></div>
- <div class="f w3"><label for="loc">Location / shelf</label><input id="loc" placeholder="e.g. Box 2"></div>
- <div class="f w3"><label for="notes">Notes</label><input id="notes" placeholder="Edition, label, barcode…"></div>
- <div class="actions">
-  <button class="primary" type="submit" id="saveBtn">Add CD</button>
-  <button type="button" class="ghost" id="cancelEdit" hidden>Cancel edit</button>
-  <span class="msg" id="msg"></span>
- </div>
-</form>
-<datalist id="genres"></datalist>
-
-<div class="card">
- <div class="toolbar">
-  <input type="search" id="q" placeholder="Search artist, title, notes…">
-  <select id="condFilter"><option value="">All conditions</option></select>
-  <select id="locFilter"><option value="">All locations</option></select>
- </div>
- <div style="overflow-x:auto">
- <table>
-  <thead><tr>
-   <th data-k="artist">Artist ▾</th><th data-k="title">Title</th>
-   <th data-k="year" class="hide-s">Year</th><th data-k="genre" class="hide-s">Genre</th>
-   <th data-k="cond" class="hide-s">Condition</th><th data-k="loc" class="hide-s">Location</th><th></th>
-  </tr></thead>
-  <tbody id="rows"></tbody>
- </table>
- </div>
- <div class="empty" id="empty" hidden>No CDs yet. Add your first one above.</div>
-</div>
-
-<details class="card" style="margin-top:16px">
- <summary>Import / export</summary>
- <p class="sub">Export your whole collection as CSV, or paste CSV rows to import. Columns: artist, title, year, genre, condition, qty, location, notes (first row may be a header).</p>
- <div class="toolbar">
-  <button class="ghost" id="dl">Download CSV</button>
-  <button class="ghost" id="copy">Copy CSV</button>
-  <button class="ghost" id="importFile">Import CSV file</button>
-  <input type="file" id="file" accept=".csv,text/csv" hidden>
- </div>
- <textarea class="bulk" id="bulk" placeholder="Paste CSV here to import…"></textarea>
- <div class="toolbar" style="margin-top:8px"><button class="ghost" id="importBtn">Import pasted rows</button><span class="msg" id="msg2"></span></div>
-</details>
-</div>
+<div class="app" id="app"></div>
 
 <script>
 (function(){
 "use strict";
-var items=[], editing=null, sortK="artist", sortDir=1, store=null, loaded=false, saveTimer=null, saving=false, dirty=false;
-var $=function(id){return document.getElementById(id)};
-var LS="cdlog.v1";
+var KEY="cdshelves.v1", OLD="cdlog.v1";
+var S={shelves:[],cds:[]};            // state
+var ui={open:null,q:"",sheet:null};   // open = id of cd being edited
+var app=document.getElementById("app");
 
-/* ---------- storage: claude db (private to viewer) with localStorage fallback ---------- */
-function lsRead(){try{return JSON.parse(localStorage.getItem(LS)||"[]")}catch(e){return []}}
-function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(items))}catch(e){}}
-function dataOf(s){ if(!s) return null; var d=(typeof s.data==="function")?s.data():s.data; if(d===undefined) d=s; return d; }
-var baseStatus="";
-function setStatus(t){$("status").textContent=t}
-
-async function init(){
-  items=lsRead(); store={save:function(){lsWrite();return Promise.resolve();}};
-  baseStatus="Saved on this device"; setStatus(baseStatus); loaded=true; render();
-  if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
-  if(navigator.storage&&navigator.storage.persist){ navigator.storage.persist().catch(function(){}); }
+/* ---------- storage ---------- */
+function load(){
+  try{var d=JSON.parse(localStorage.getItem(KEY)||"null"); if(d&&d.shelves){S=d;return}}catch(e){}
+  // migrate earlier flat list if present
+  try{
+    var old=JSON.parse(localStorage.getItem(OLD)||"[]");
+    if(old.length){var sh={id:uid(),name:"Unsorted"};S.shelves=[sh];
+      S.cds=old.map(function(o){return{id:o.id||uid(),shelf:sh.id,artist:o.artist||"",title:o.title||"",year:o.year||"",notes:o.notes||""}});save()}
+  }catch(e){}
 }
-
-function persist(){
-  dirty=true;
-  clearTimeout(saveTimer);
-  saveTimer=setTimeout(flush,400);
-}
-async function flush(){
-  if(saving){saveTimer=setTimeout(flush,300);return;}
-  if(!dirty||!store)return;
-  dirty=false; saving=true;
-  try{ lsWrite(); await store.save(); setStatus(baseStatus); }
-  catch(e){ setStatus("Cloud save failed — kept in this browser"); }
-  saving=false;
-}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast("Couldn't save — storage is full or blocked")}}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 /* ---------- helpers ---------- */
-function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
-function norm(s){return String(s||"").toLowerCase()}
-function flash(id,t){var m=$(id);m.textContent=t;setTimeout(function(){m.textContent=""},2500)}
+function cmp(a,b){return String(a||"").toLowerCase().localeCompare(String(b||"").toLowerCase(),undefined,{numeric:true})}
+function shelfById(id){return S.shelves.find(function(s){return s.id===id})}
+function cdsOn(id){return S.cds.filter(function(c){return c.shelf===id})}
+function hue(str){var h=0;for(var i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))>>>0;return h%360}
+function route(){var h=location.hash.slice(1);return h&&shelfById(h)?h:null}
+function go(id){ui.open=null;ui.q="";location.hash=id||"";if(!id)render()}
+var toastT;function toast(t){var e=document.createElement("div");e.className="toast";e.textContent=t;document.body.appendChild(e);clearTimeout(toastT);setTimeout(function(){e.remove()},2200)}
 
-/* ---------- render ---------- */
-function fillSelect(sel,vals,label){
-  var cur=sel.value; sel.innerHTML='<option value="">'+label+'</option>'+vals.map(function(v){return '<option>'+esc(v)+'</option>'}).join("");
-  if(vals.indexOf(cur)>-1) sel.value=cur;
+/* ---------- views ---------- */
+function spines(list){
+  var n=Math.min(list.length,22);
+  var out="";
+  for(var i=0;i<n;i++){var c=list[i],hh=hue(c.artist+c.title),ht=26+((hh*7+i*13)%28);
+    out+='<i style="height:'+ht+'px;background:hsl('+hh+' 45% '+(42+(i%3)*6)+'%)"></i>'}
+  return '<div class="spines">'+out+'</div>';
 }
-function uniq(k){var m={};items.forEach(function(i){if(i[k])m[i[k]]=1});return Object.keys(m).sort()}
+
+function home(){
+  var q=ui.q.trim().toLowerCase(), h="";
+  h+='<div class="bar"><h1>CD Shelves<span class="sub">'+S.cds.length+' CD'+(S.cds.length===1?"":"s")+' on '+S.shelves.length+(S.shelves.length===1?' shelf':' shelves')+'</span></h1>'
+   +'<button class="icon" data-a="menu" aria-label="Backup and import">⋯</button></div>';
+  if(S.cds.length) h+='<input class="search" id="q" type="search" placeholder="Search all CDs…" value="'+esc(ui.q)+'">';
+  if(q){
+    var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+c.notes+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
+    if(!hits.length) h+='<div class="empty"><b>🔍</b>No matches</div>';
+    hits.forEach(function(c){var s=shelfById(c.shelf);
+      h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></button></div>'});
+    return h;
+  }
+  h+='<div class="shelves">';
+  S.shelves.forEach(function(s){var l=cdsOn(s.id);
+    h+='<button class="shelf" data-a="open" data-id="'+s.id+'"><div class="nm">'+esc(s.name)+'</div><div class="ct">'+l.length+' CD'+(l.length===1?"":"s")+'</div>'+spines(l)+'</button>'});
+  h+='<button class="newshelf" data-a="newShelf"><span><b>+</b>New shelf</span></button></div>';
+  if(!S.shelves.length) h+='<div class="empty"><b>📀</b>Start by making your first shelf,<br>like “Shelf 1” or “Rock”.</div>';
+  return h;
+}
+
+function shelfView(id){
+  var s=shelfById(id), list=cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
+  var h='<div class="bar"><button class="icon" data-a="back" aria-label="Back">←</button>'
+   +'<h1>'+esc(s.name)+'<span class="sub">'+list.length+' CD'+(list.length===1?"":"s")+'</span></h1>'
+   +'<button class="icon" data-a="shelfMenu" aria-label="Shelf options">⋯</button></div>';
+  h+='<form class="quick" id="add" autocomplete="off"><input class="field" id="fa" placeholder="Artist" value="'+esc(ui.lastArtist||"")+'" enterkeyhint="next">'
+   +'<div class="row"><input class="field" id="ft" placeholder="Album title" enterkeyhint="done"><button class="btn" type="submit">Add</button></div></form>';
+  if(!list.length) h+='<div class="empty"><b>🎶</b>This shelf is empty.<br>Add your first CD above.</div>';
+  var last="";
+  list.forEach(function(c){
+    var L=(c.artist.trim()[0]||"#").toUpperCase(); if(!/[A-Z]/.test(L))L="#";
+    if(L!==last){h+='<div class="letter">'+L+'</div>';last=L}
+    var open=ui.open===c.id;
+    h+='<div class="cd"><button data-a="toggle" data-id="'+c.id+'"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
+      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</button>';
+    if(open){
+      h+='<div class="edit" data-cd="'+c.id+'">'
+       +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
+       +'<label>Album<input class="field" data-f="title" value="'+esc(c.title)+'"></label>'
+       +'<div class="row"><label style="flex:1">Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
+       +'<label style="flex:2">Notes<input class="field" data-f="notes" value="'+esc(c.notes)+'"></label></div>'
+       +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
+       +'<div class="row"><button class="btn bad" data-a="delCd" data-id="'+c.id+'">Delete</button><button class="btn" data-a="toggle" data-id="'+c.id+'" style="flex:1">Done</button></div></div>';
+    }
+    h+='</div>';
+  });
+  return h;
+}
 
 function render(){
-  var q=norm($("q").value),cf=$("condFilter").value,lf=$("locFilter").value;
-  fillSelect($("condFilter"),uniq("cond"),"All conditions");
-  fillSelect($("locFilter"),uniq("loc"),"All locations");
-  $("genres").innerHTML=uniq("genre").map(function(g){return '<option value="'+esc(g)+'">'}).join("");
-  var list=items.filter(function(i){
-    if(cf&&i.cond!==cf)return false; if(lf&&i.loc!==lf)return false;
-    if(!q)return true;
-    return norm([i.artist,i.title,i.genre,i.notes,i.loc,i.year].join(" ")).indexOf(q)>-1;
-  });
-  list.sort(function(a,b){
-    var x=a[sortK],y=b[sortK];
-    if(sortK==="year"){x=+x||0;y=+y||0;return (x-y)*sortDir||cmp(a.title,b.title)}
-    return cmp(x,y)*sortDir||cmp(a.title,b.title);
-  });
-  var total=items.reduce(function(n,i){return n+(+i.qty||1)},0);
-  $("count").textContent=items.length+" album"+(items.length===1?"":"s")+(total!==items.length?" · "+total+" discs":"")+(list.length!==items.length?" · "+list.length+" shown":"");
-  $("empty").hidden=list.length>0; $("empty").textContent=items.length?"No matches.":"No CDs yet. Add your first one above.";
-  $("rows").innerHTML=list.map(function(i){
-    return '<tr><td>'+esc(i.artist)+'</td><td class="t">'+esc(i.title)+(i.notes?'<div class="sub">'+esc(i.notes)+'</div>':'')+(+i.qty>1?' <span class="tag">×'+esc(i.qty)+'</span>':'')+'</td>'
-     +'<td class="hide-s">'+esc(i.year)+'</td><td class="hide-s">'+esc(i.genre)+'</td><td class="hide-s">'+esc(i.cond)+'</td><td class="hide-s">'+esc(i.loc)+'</td>'
-     +'<td class="row-actions"><button class="ghost" data-edit="'+i.id+'">Edit</button> <button class="danger" data-del="'+i.id+'">Delete</button></td></tr>';
-  }).join("");
+  var id=route();
+  app.innerHTML=id?shelfView(id):home();
+  if(!id&&ui.q){var q=document.getElementById("q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
-function cmp(a,b){return norm(a).localeCompare(norm(b),undefined,{numeric:true})}
 
-/* ---------- add / edit ---------- */
-var F=["artist","title","year","genre","cond","qty","loc","notes"];
-function readForm(){var o={};F.forEach(function(k){o[k]=$(k).value.trim()});o.qty=Math.max(1,parseInt(o.qty,10)||1);return o}
-function clearForm(){F.forEach(function(k){$(k).value=""});$("qty").value=1;editing=null;$("saveBtn").textContent="Add CD";$("cancelEdit").hidden=true}
-$("form").addEventListener("submit",function(e){
-  e.preventDefault(); if(!loaded)return;
-  var o=readForm(); if(!o.artist||!o.title)return;
-  if(editing){ var i=items.find(function(x){return x.id===editing}); if(i)Object.assign(i,o); flash("msg","Updated"); clearForm(); }
-  else{
-    var dup=items.some(function(x){return norm(x.artist)===norm(o.artist)&&norm(x.title)===norm(o.title)});
-    o.id=uid(); o.added=Date.now(); items.push(o);
-    flash("msg",dup?"Added (you already had this one — now listed twice)":"Added");
-    // keep artist/genre/location handy for batch entry
-    var keep={artist:o.artist,genre:o.genre,loc:o.loc,cond:o.cond}; clearForm(); Object.keys(keep).forEach(function(k){$(k).value=keep[k]});
-    $("title").focus();
-  }
-  persist(); render();
-});
-$("cancelEdit").onclick=clearForm;
-$("rows").addEventListener("click",function(e){
-  var b=e.target.closest("button"); if(!b)return;
-  if(b.dataset.edit){
-    var i=items.find(function(x){return x.id===b.dataset.edit}); if(!i)return;
-    F.forEach(function(k){$(k).value=i[k]==null?"":i[k]}); editing=i.id;
-    $("saveBtn").textContent="Save changes"; $("cancelEdit").hidden=false; window.scrollTo({top:0,behavior:"smooth"}); $("title").focus();
-  }else if(b.dataset.del){
-    if(b.dataset.armed){ items=items.filter(function(x){return x.id!==b.dataset.del}); persist(); render(); }
-    else{ b.dataset.armed=1; b.textContent="Sure?"; setTimeout(function(){b.dataset.armed="";b.textContent="Delete"},2500); }
-  }
-});
-["q","condFilter","locFilter"].forEach(function(id){$(id).addEventListener("input",render)});
-document.querySelectorAll("th[data-k]").forEach(function(th){th.onclick=function(){
-  var k=th.dataset.k; if(sortK===k)sortDir=-sortDir; else{sortK=k;sortDir=1}
-  document.querySelectorAll("th[data-k]").forEach(function(t){t.textContent=t.textContent.replace(/ [▾▴]$/,"")});
-  th.textContent+=sortDir===1?" ▾":" ▴"; render();
-}});
+/* ---------- sheets ---------- */
+function sheet(html){closeSheet();var d=document.createElement("div");d.className="scrim";d.id="scrim";d.innerHTML='<div class="sheet">'+html+'</div>';
+  d.addEventListener("click",function(e){if(e.target===d)closeSheet()});document.body.appendChild(d);var f=d.querySelector("input");if(f)f.focus();return d}
+function closeSheet(){var d=document.getElementById("scrim");if(d)d.remove()}
 
-/* ---------- CSV ---------- */
+function askName(title,val,okLabel,cb){
+  var d=sheet('<h2>'+title+'</h2><form id="nf"><input class="field" id="nm" value="'+esc(val||"")+'" placeholder="e.g. Shelf 1, Rock, Box on desk" maxlength="40"></form>'
+    +'<div class="row"><button class="btn alt" id="x">Cancel</button><button class="btn" id="ok">'+okLabel+'</button></div>');
+  function done(){var v=d.querySelector("#nm").value.trim();if(!v)return;closeSheet();cb(v)}
+  d.querySelector("#x").onclick=closeSheet;d.querySelector("#ok").onclick=done;d.querySelector("#nf").onsubmit=function(e){e.preventDefault();done()};
+  var i=d.querySelector("#nm");i.select();
+}
+function confirmSheet(title,msg,okLabel,cb){
+  var d=sheet('<h2>'+title+'</h2><p>'+msg+'</p><div class="row"><button class="btn alt" id="x">Cancel</button><button class="btn bad" id="ok" style="background:var(--danger);color:#fff;border:0">'+okLabel+'</button></div>');
+  d.querySelector("#x").onclick=closeSheet;d.querySelector("#ok").onclick=function(){closeSheet();cb()};
+}
+
+/* ---------- backup / import ---------- */
 function toCSV(){
-  var cols=["artist","title","year","genre","cond","qty","loc","notes"],head=["artist","title","year","genre","condition","qty","location","notes"];
   var q=function(v){v=String(v==null?"":v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  return [head.join(",")].concat(items.map(function(i){return cols.map(function(c){return q(i[c])}).join(",")})).join("\n");
+  var rows=["shelf,artist,title,year,notes"];
+  S.shelves.forEach(function(s){cdsOn(s.id).forEach(function(c){rows.push([s.name,c.artist,c.title,c.year,c.notes].map(q).join(","))})});
+  return rows.join("\n");
 }
-function parseCSV(t){
-  var rows=[],r=[],c="",inq=false;
+function parseCSV(t){var rows=[],r=[],c="",inq=false;
   for(var i=0;i<t.length;i++){var ch=t[i];
-    if(inq){ if(ch==='"'){ if(t[i+1]==='"'){c+='"';i++} else inq=false } else c+=ch }
-    else if(ch==='"') inq=true;
-    else if(ch===","||ch==="\t"){r.push(c);c=""}
-    else if(ch==="\n"||ch==="\r"){ if(ch==="\r"&&t[i+1]==="\n")i++; r.push(c);c=""; if(r.some(function(x){return x.trim()}))rows.push(r); r=[] }
-    else c+=ch;
-  }
-  r.push(c); if(r.some(function(x){return x.trim()}))rows.push(r); return rows;
-}
-function importText(t){
-  var rows=parseCSV(t); if(!rows.length){flash("msg2","Nothing to import");return}
-  if(/^artist$/i.test(rows[0][0].trim()))rows.shift();
-  var n=0;
-  rows.forEach(function(r){
-    if(!(r[0]||"").trim()||!(r[1]||"").trim())return;
-    items.push({id:uid(),added:Date.now(),artist:r[0].trim(),title:r[1].trim(),year:(r[2]||"").trim(),genre:(r[3]||"").trim(),cond:(r[4]||"").trim(),qty:Math.max(1,parseInt(r[5],10)||1),loc:(r[6]||"").trim(),notes:(r[7]||"").trim()});n++;
-  });
-  persist(); render(); flash("msg2","Imported "+n+" CD"+(n===1?"":"s"));
-}
-$("importBtn").onclick=function(){importText($("bulk").value);$("bulk").value=""};
-$("importFile").onclick=function(){$("file").click()};
-$("file").onchange=function(){var f=this.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){importText(String(rd.result))};rd.readAsText(f);this.value=""};
-$("copy").onclick=function(){
-  try{navigator.clipboard.writeText(toCSV()).then(function(){flash("msg2","Copied")},function(){flash("msg2","Copy blocked — select from the box instead");$("bulk").value=toCSV()})}
-  catch(e){$("bulk").value=toCSV();flash("msg2","Copy blocked — CSV placed in the box")}
-};
-$("dl").onclick=function(){
-  var u=URL.createObjectURL(new Blob([toCSV()],{type:"text/csv"})),l=document.createElement("a");
-  l.href=u;l.download="cd-collection.csv";document.body.appendChild(l);l.click();l.remove();
-  setTimeout(function(){URL.revokeObjectURL(u)},1000);flash("msg2","Downloaded");
-};
+    if(inq){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else inq=false}else c+=ch}
+    else if(ch==='"')inq=true;else if(ch===","||ch==="\t"){r.push(c);c=""}
+    else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);c="";if(r.some(function(x){return x.trim()}))rows.push(r);r=[]}
+    else c+=ch}
+  r.push(c);if(r.some(function(x){return x.trim()}))rows.push(r);return rows}
+function importCSV(t){
+  var rows=parseCSV(t);if(rows.length&&/^shelf$/i.test(rows[0][0].trim()))rows.shift();
+  var n=0;rows.forEach(function(r){var sn=(r[0]||"").trim()||"Unsorted",a=(r[1]||"").trim(),ti=(r[2]||"").trim();if(!a&&!ti)return;
+    var s=S.shelves.find(function(x){return x.name.toLowerCase()===sn.toLowerCase()});if(!s){s={id:uid(),name:sn};S.shelves.push(s)}
+    S.cds.push({id:uid(),shelf:s.id,artist:a,title:ti,year:(r[3]||"").trim(),notes:(r[4]||"").trim()});n++});
+  save();render();return n}
+function download(){
+  var u=URL.createObjectURL(new Blob([toCSV()],{type:"text/csv"})),a=document.createElement("a");
+  a.href=u;a.download="cd-shelves.csv";document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(u)},1500)}
 
-init();
+function mainMenu(){
+  var d=sheet('<h2>Backup &amp; import</h2><p>Your CDs live on this device only. Download a backup now and then.</p><div class="menu">'
+    +'<button class="item" id="dl">⬇︎ Download backup (CSV)</button><button class="item" id="cp">⧉ Copy as CSV</button>'
+    +'<button class="item" id="im">⬆︎ Import from CSV file</button><button class="item" id="pa">✎ Import pasted rows</button></div>'
+    +'<p>CSV columns: shelf, artist, title, year, notes.</p><input type="file" id="file" accept=".csv,text/csv,text/plain" hidden>');
+  d.querySelector("#dl").onclick=function(){download();closeSheet();toast("Backup downloaded")};
+  d.querySelector("#cp").onclick=function(){try{navigator.clipboard.writeText(toCSV()).then(function(){closeSheet();toast("Copied")},function(){toast("Copy blocked")})}catch(e){toast("Copy blocked")}};
+  d.querySelector("#im").onclick=function(){d.querySelector("#file").click()};
+  d.querySelector("#file").onchange=function(){var f=this.files[0];if(!f)return;var r=new FileReader();r.onload=function(){var n=importCSV(String(r.result));closeSheet();toast("Imported "+n+" CD"+(n===1?"":"s"))};r.readAsText(f)};
+  d.querySelector("#pa").onclick=function(){
+    var d2=sheet('<h2>Paste CSV rows</h2><textarea class="field" id="ta" placeholder="Shelf 1,Pink Floyd,The Wall,1979,"></textarea><div class="row"><button class="btn alt" id="x">Cancel</button><button class="btn" id="ok">Import</button></div>');
+    d2.querySelector("#x").onclick=closeSheet;d2.querySelector("#ok").onclick=function(){var n=importCSV(d2.querySelector("#ta").value);closeSheet();toast("Imported "+n+" CD"+(n===1?"":"s"))}};
+}
+function shelfMenu(id){
+  var s=shelfById(id);
+  var d=sheet('<h2>'+esc(s.name)+'</h2><div class="menu"><button class="item" id="rn">✎ Rename shelf</button><button class="item" id="dl" style="color:var(--danger)">🗑 Delete shelf</button></div>');
+  d.querySelector("#rn").onclick=function(){askName("Rename shelf",s.name,"Save",function(v){s.name=v;save();render()})};
+  d.querySelector("#dl").onclick=function(){
+    var n=cdsOn(id).length, others=S.shelves.filter(function(x){return x.id!==id});
+    if(!n){confirmSheet("Delete this shelf?","It's empty, so nothing else is affected.","Delete",function(){S.shelves=others;save();go(null)});return}
+    var d2=sheet('<h2>Delete “'+esc(s.name)+'”?</h2><p>It has '+n+' CD'+(n===1?"":"s")+'. Move them to another shelf first, or delete them with the shelf.</p>'
+      +(others.length?'<select class="field" id="mv">'+others.map(function(x){return '<option value="'+x.id+'">Move to '+esc(x.name)+'</option>'}).join("")+'</select><button class="btn" id="moveDel">Move CDs, then delete shelf</button>':'')
+      +'<button class="btn bad" id="allDel">Delete shelf and its '+n+' CD'+(n===1?"":"s")+'</button><button class="btn alt" id="x">Cancel</button>');
+    d2.querySelector("#x").onclick=closeSheet;
+    var mv=d2.querySelector("#moveDel");if(mv)mv.onclick=function(){var to=d2.querySelector("#mv").value;S.cds.forEach(function(c){if(c.shelf===id)c.shelf=to});S.shelves=others;save();closeSheet();go(null);toast("Moved "+n+" CD"+(n===1?"":"s"))};
+    d2.querySelector("#allDel").onclick=function(){S.cds=S.cds.filter(function(c){return c.shelf!==id});S.shelves=others;save();closeSheet();go(null)};
+  };
+}
+
+/* ---------- events ---------- */
+app.addEventListener("click",function(e){
+  var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
+  if(a==="open"||a==="gotoCd")go(id);
+  else if(a==="back")go(null);
+  else if(a==="newShelf")askName("New shelf","","Create",function(v){var s={id:uid(),name:v};S.shelves.push(s);save();go(s.id)});
+  else if(a==="menu")mainMenu();
+  else if(a==="shelfMenu")shelfMenu(route());
+  else if(a==="toggle"){ui.open=ui.open===id?null:id;render();if(ui.open){var el=app.querySelector('[data-cd="'+id+'"]');if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"})}}
+  else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){S.cds=S.cds.filter(function(c){return c.id!==id});ui.open=null;save();render()});
+});
+app.addEventListener("submit",function(e){
+  if(e.target.id!=="add")return;e.preventDefault();
+  var sid=route(),a=document.getElementById("fa").value.trim(),t=document.getElementById("ft").value.trim();
+  if(!a){document.getElementById("fa").focus();return}
+  if(!t){document.getElementById("ft").focus();return}
+  S.cds.push({id:uid(),shelf:sid,artist:a,title:t,year:"",notes:""});save();ui.lastArtist=a;render();
+  document.getElementById("ft").focus();
+});
+app.addEventListener("input",function(e){
+  var t=e.target;
+  if(t.id==="q"){ui.q=t.value;render();return}
+  if(t.dataset&&t.dataset.f){var box=t.closest("[data-cd]"),c=S.cds.find(function(x){return x.id===box.dataset.cd});if(!c)return;
+    c[t.dataset.f]=t.value;save();
+    if(t.dataset.f==="shelf"){ui.open=null;render();toast("Moved to "+shelfById(t.value).name)}}
+});
+window.addEventListener("hashchange",function(){ui.open=null;render()});
+
+load();render();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
 })();
 </script>
 </body>
