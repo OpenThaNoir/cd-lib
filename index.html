@@ -27,7 +27,7 @@ html[data-theme="hclight"] :focus-visible{outline-color:#0050d0}
 .app{max-width:44rem;margin:0 auto;padding:0 1rem 6rem}
 
 .bar{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;padding:.8rem 0 .7rem;border-bottom:var(--bw) solid var(--line);margin-bottom:1rem}
-.bar h1{margin:0;font-size:1.5rem;line-height:1.2;flex:1 1 11rem;min-width:11rem;overflow-wrap:anywhere}
+.bar h1{margin:0;font-size:1.5rem;line-height:1.2;flex:1 1 8rem;min-width:8rem;overflow-wrap:anywhere}
 .bar .icon{order:2}.bar h1{order:1}.bar .icon[data-a=back]{order:0}
 .bar .sub{display:block;font-size:.9rem;font-weight:400;color:var(--mute);letter-spacing:0;margin-top:.1rem}
 .icon{min-width:3.2rem;height:3.2rem;border-radius:.8rem;background:var(--panel);border:var(--bw) solid var(--line);display:grid;place-items:center;font-size:1.15rem;font-weight:700;flex:none;padding:0 .4rem}
@@ -67,6 +67,11 @@ html[data-theme="hclight"] .letter{color:#000}
 .cd .meta{color:var(--mute);font-size:.9rem}
 .edit{padding:.6rem .9rem 1rem;display:grid;gap:.7rem;border-top:var(--bw) solid var(--line)}
 .edit label,.sheet label{font-size:.95rem;color:var(--ink);display:grid;gap:.25rem;font-weight:600}
+.cd .go{flex:none;font-size:1.8rem;color:var(--mute);line-height:1}
+.hero{display:grid;place-items:center;margin:.2rem 0 1.2rem}
+.hero .art{width:min(15rem,70vw);border-radius:.7rem;border:var(--bw) solid var(--line)}
+.detail{display:grid;gap:.9rem}
+.detail label{font-size:.95rem;font-weight:600;display:grid;gap:.25rem}
 .edit .row:not(:last-child){flex-direction:column}
 .empty{text-align:center;color:var(--mute);padding:2.5rem .6rem;font-size:1.1rem}
 .empty b{display:block;font-size:2.4rem;margin-bottom:.4rem}
@@ -125,7 +130,8 @@ function cmp(a,b){return String(a||"").toLowerCase().localeCompare(String(b||"")
 function shelfById(id){return S.shelves.find(function(s){return s.id===id})}
 function cdsOn(id){return S.cds.filter(function(c){return c.shelf===id})}
 function hue(str){var h=0;for(var i=0;i<str.length;i++)h=(h*31+str.charCodeAt(i))>>>0;return h%360}
-function route(){var h=location.hash.slice(1);return h&&shelfById(h)?h:null}
+function route(){var h=location.hash.slice(1).split("/")[0];return h&&shelfById(h)?h:null}
+function routeCd(){var p=location.hash.slice(1).split("/");var sid=route();return sid&&p[1]?(S.cds.find(function(c){return c.id===p[1]&&c.shelf===sid})||null):null}
 function go(id){ui.open=null;ui.q="";location.hash=id||"";if(!id)render()}
 var toastT;function toast(t){var e=document.createElement("div");e.className="toast";e.setAttribute("role","status");e.textContent=t;document.body.appendChild(e);clearTimeout(toastT);setTimeout(function(){e.remove()},4500)}
 
@@ -217,28 +223,37 @@ function shelfView(id){
   list.forEach(function(c){
     var L=(c.artist.trim()[0]||"#").toUpperCase(); if(!/[A-Z]/.test(L))L="#";
     if(L!==last){h+='<div class="letter">'+L+'</div>';last=L}
-    var open=ui.open===c.id;
-    h+='<div class="cd"><button data-a="toggle" data-id="'+c.id+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
-      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</span></button>';
-    if(open){
-      h+='<div class="edit" data-cd="'+c.id+'">'
-       +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
-       +'<label>Album<input class="field" data-f="title" value="'+esc(c.title)+'"></label>'
-       +'<div class="row"><label>Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
-       +'<label>Notes<input class="field" data-f="notes" value="'+esc(c.notes)+'"></label></div>'
-       +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
-       +'<div class="artrow"><button class="btn alt" data-a="findArt" data-id="'+c.id+'">Find cover</button>'+(c.art?'<button class="btn alt" data-a="noArt" data-id="'+c.id+'">Remove cover</button>':'')+'</div>'
-       +'<div class="row"><button class="btn bad" data-a="delCd" data-id="'+c.id+'">Delete</button><button class="btn" data-a="toggle" data-id="'+c.id+'" style="flex:1">Done</button></div></div>';
-    }
-    h+='</div>';
+    h+='<div class="cd"><button data-a="openCd" data-id="'+c.id+'" aria-label="'+esc(c.title)+' by '+esc(c.artist)+'. Open details">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div>'
+      +((c.year||c.notes)?'<div class="meta">'+esc([c.year,c.notes].filter(Boolean).join(" · "))+'</div>':'')+'</span><span class="go" aria-hidden="true">›</span></button></div>';
   });
+  return h;
+}
+
+
+function detailView(c){
+  var s=shelfById(c.shelf);
+  var h='<div class="bar"><button class="icon" data-a="back" aria-label="Back to shelf '+esc(s.name)+'">←</button>'
+   +'<h1>'+esc(c.title)+'<span class="sub">'+esc(c.artist)+' · '+esc(s.name)+'</span></h1>'
+   +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button></div>';
+  h+='<div class="hero">'+thumb(c)+'</div>';
+  h+='<div class="detail" data-cd="'+c.id+'">'
+   +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
+   +'<label>Album<input class="field" data-f="title" value="'+esc(c.title)+'"></label>'
+   +'<label>Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
+   +'<label>Notes<input class="field" data-f="notes" value="'+esc(c.notes)+'"></label>'
+   +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
+   +'<div class="artrow"><button class="btn alt" data-a="findArt" data-id="'+c.id+'">Find cover</button>'+(c.art?'<button class="btn alt" data-a="noArt" data-id="'+c.id+'">Remove cover</button>':'')+'</div>'
+   +'<button class="btn" data-a="back">Done</button>'
+   +'<button class="btn bad" data-a="delCd" data-id="'+c.id+'">Delete this CD</button></div>';
   return h;
 }
 
 function render(){
   var id=route();
-  app.innerHTML=id?shelfView(id):home();
-  if(id)wantArt(cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)}));
+  var dcd=routeCd();
+  app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
+  if(dcd)wantArt([dcd]);
+  else if(id)wantArt(cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)}));
   if(!id&&ui.q){var q=document.getElementById("q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
 
@@ -330,16 +345,16 @@ function displaySheet(){
 app.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
   if(a==="open"||a==="gotoCd")go(id);
-  else if(a==="back")go(null);
+  else if(a==="back"){var sh=route();if(routeCd()&&sh)location.hash=sh;else go(null)}
   else if(a==="newShelf")askName("New shelf","","Create",function(v){var s={id:uid(),name:v};S.shelves.push(s);save();go(s.id)});
   else if(a==="menu")mainMenu();
   else if(a==="display")displaySheet();
   else if(a==="shelfMenu")shelfMenu(route());
-  else if(a==="toggle"){ui.open=ui.open===id?null:id;render();if(ui.open){var el=app.querySelector('[data-cd="'+id+'"]');if(el)el.scrollIntoView({block:"nearest",behavior:"smooth"})}}
+  else if(a==="openCd"){location.hash=route()+"/"+id}
   else if(a==="findArt"){var c=S.cds.find(function(x){return x.id===id});if(!c)return;toast("Looking for the cover…");
     fetchArt(c).then(function(u){c.artTried=Date.now();if(u){c.art=u;save();paintArt(c);toast("Cover found");render()}else{save();toast("No matching cover found")}}).catch(function(){toast("Couldn't look it up. Check your internet connection.")})}
   else if(a==="noArt"){var c2=S.cds.find(function(x){return x.id===id});if(c2){c2.art="";c2.artTried=Date.now();save();render()}}
-  else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){S.cds=S.cds.filter(function(c){return c.id!==id});ui.open=null;save();render()});
+  else if(a==="delCd")confirmSheet("Delete this CD?","This can't be undone.","Delete",function(){var sh=route();S.cds=S.cds.filter(function(c){return c.id!==id});save();if(sh)location.hash=sh;else render()});
 });
 app.addEventListener("submit",function(e){
   if(e.target.id!=="add")return;e.preventDefault();
@@ -354,9 +369,9 @@ app.addEventListener("input",function(e){
   if(t.id==="q"){ui.q=t.value;render();return}
   if(t.dataset&&t.dataset.f){var box=t.closest("[data-cd]"),c=S.cds.find(function(x){return x.id===box.dataset.cd});if(!c)return;
     c[t.dataset.f]=t.value;save();
-    if(t.dataset.f==="shelf"){ui.open=null;render();toast("Moved to "+shelfById(t.value).name)}}
+    if(t.dataset.f==="shelf"){location.hash=c.shelf+"/"+c.id;toast("Moved to "+shelfById(t.value).name)}}
 });
-window.addEventListener("hashchange",function(){ui.open=null;render()});
+window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
 loadPrefs();load();render();
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
