@@ -468,7 +468,7 @@ async function readBands(worker,canvas,label){
     scan.statusText=label+" ("+Math.round(k/n*100)+"%)";setSStat(scan.statusText);
     var got=[];
     var tries=[["11",false],["6",true],["6",false],["7",false]];
-    for(var ti=0;ti<tries.length&&!got.length;ti++){
+    for(var ti=0;ti<tries.length&&ti<3;ti++){
       await worker.setParameters({tessedit_pageseg_mode:tries[ti][0]});
       var res=await worker.recognize(bandCanvas(canvas,yy,bh,tries[ti][1])),d=res.data||{};
       var ls=(d.lines&&d.lines.length)?d.lines:String(d.text||"").split("\n").map(function(t){return{text:t,confidence:d.confidence||0}});
