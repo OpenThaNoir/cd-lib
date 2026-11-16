@@ -68,6 +68,7 @@ html[data-theme="hclight"] .letter{color:#000}
 .edit{padding:.6rem .9rem 1rem;display:grid;gap:.7rem;border-top:var(--bw) solid var(--line)}
 .edit label,.sheet label{font-size:.95rem;color:var(--ink);display:grid;gap:.25rem;font-weight:600}
 .lost{font-size:1.15rem;margin:1.4rem 0 .6rem;padding-top:.8rem;border-top:var(--bw) solid var(--line)}
+.grp{font-size:1.15rem;margin:1.2rem 0 .6rem}
 .cand{display:flex;align-items:center;gap:.8rem;text-align:left;width:100%}
 .cand .art{flex:none}
 .scanbtn{width:100%;margin:0 0 1rem}
@@ -124,7 +125,7 @@ function applyPrefs(){var d=document.documentElement;d.setAttribute("data-theme"
 
 /* ---------- storage ---------- */
 function load(){
-  try{var d=JSON.parse(localStorage.getItem(KEY)||"null"); if(d&&d.shelves){S=d;S.del=S.del||{};initSnap();return}}catch(e){}
+  try{var d=JSON.parse(localStorage.getItem(KEY)||"null"); if(d&&d.shelves){S=d;S.del=S.del||{};initSnap();if(ensureSpecial(S))save();return}}catch(e){}
   // migrate earlier flat list if present
   try{
     var old=JSON.parse(localStorage.getItem(OLD)||"[]");
@@ -181,7 +182,7 @@ async function syncNow(){
     stamp();
     var id=await findGist(),remote=null;
     if(id){try{remote=await readGist(id)}catch(e){if(e.status===404){sync.cfg.gist=null;saveSyncCfg();id=await findGist();remote=id?await readGist(id):null}else throw e}}
-    var local={shelves:S.shelves,cds:S.cds,del:S.del||{}},merged=remote?mergeData(local,remote):local;
+    var local={shelves:S.shelves,cds:S.cds,del:S.del||{}},merged=remote?mergeData(local,remote):local;ensureSpecial(merged);
     if(!remote||canon(merged)!==canon(remote))await writeGist(id,merged);
     if(canon(merged)!==canon(local)){
       S={shelves:merged.shelves,cds:merged.cds,del:merged.del};initSnap();
@@ -210,6 +211,18 @@ function syncSheet(){
       syncNow().then(function(){if(sync.msg.indexOf("Synced")===0){closeSheet();toast("Connected. Your shelves are syncing.")}else{var m=sync.msg;sync.cfg=null;saveSyncCfg();var e=document.getElementById("syncstat");if(e)e.textContent=m}})}}
   var x=d.querySelector("#x");if(x)x.onclick=closeSheet}
 
+var SPECIAL=[{id:"want",name:"Want"},{id:"search",name:"Search"}];
+function isSpecial(id){return SPECIAL.some(function(x){return x.id===id})}
+function ensureSpecial(d){   // the built-in Want and Search shelves always exist; same ids on every device so syncing never duplicates them
+  var changed=false;
+  SPECIAL.forEach(function(sp){
+    if(d.shelves.some(function(x){return x.id===sp.id}))return;
+    var same=d.shelves.find(function(x){return x.name.trim().toLowerCase()===sp.name.toLowerCase()});
+    if(same){d.cds.forEach(function(c){if(c.shelf===same.id)c.shelf=sp.id});same.id=sp.id;same.name=sp.name}   // adopt an existing shelf with that name
+    else d.shelves.push({id:sp.id,name:sp.name});
+    changed=true});
+  if(d.del)SPECIAL.forEach(function(sp){delete d.del[sp.id]});
+  return changed}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
 
 /* ---------- helpers ---------- */
@@ -335,7 +348,8 @@ function spines(list){
 
 function home(){
   var q=ui.q.trim().toLowerCase(), h="";
-  h+='<div class="bar"><h1>CD Shelves<span class="sub">'+S.cds.length+' CD'+(S.cds.length===1?"":"s")+' on '+S.shelves.length+(S.shelves.length===1?' shelf':' shelves')+'</span></h1>'
+  var owned=S.cds.filter(function(c){return !isSpecial(c.shelf)}).length,nsh=S.shelves.filter(function(x){return !isSpecial(x.id)}).length;
+  h+='<div class="bar"><h1>CD Shelves<span class="sub">'+owned+' CD'+(owned===1?"":"s")+' on '+nsh+(nsh===1?' shelf':' shelves')+'</span></h1>'
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="menu" aria-label="Backup and import">Backup</button></div>';
   if(S.cds.length) h+='<input class="search" id="q" type="search" placeholder="Search all CDs…" value="'+esc(ui.q)+'">';
   if(q){
@@ -345,11 +359,15 @@ function home(){
       h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></span></button></div>'});
     return h;
   }
-  h+='<div class="shelves">';
-  S.shelves.forEach(function(s){var l=cdsOn(s.id);
-    h+='<button class="shelf" data-a="open" data-id="'+s.id+'" aria-label="Shelf '+esc(s.name)+', '+l.length+' CD'+(l.length===1?"":"s")+'"><div class="nm">'+esc(s.name)+'</div><div class="ct">'+l.length+' CD'+(l.length===1?"":"s")+'</div>'+spines(l)+'</button>'});
+  var tile=function(s){var l=cdsOn(s.id);
+    return '<button class="shelf" data-a="open" data-id="'+s.id+'" aria-label="Shelf '+esc(s.name)+', '+l.length+' CD'+(l.length===1?"":"s")+'"><div class="nm">'+esc(s.name)+'</div><div class="ct">'+l.length+' CD'+(l.length===1?"":"s")+'</div>'+spines(l)+'</button>'};
+  h+='<h2 class="grp">My shelves</h2><div class="shelves">';
+  S.shelves.filter(function(s){return !isSpecial(s.id)}).forEach(function(s){h+=tile(s)});
   h+='<button class="newshelf" data-a="newShelf"><span><b>+</b>New shelf</span></button></div>';
-  if(!S.shelves.length) h+='<div class="empty"><b>📀</b>Start by making your first shelf,<br>like “Shelf 1” or “Rock”.</div>';
+  h+='<h2 class="grp">Want &amp; Search</h2><div class="shelves">';
+  S.shelves.filter(function(s){return isSpecial(s.id)}).forEach(function(s){h+=tile(s)});
+  h+='</div>';
+  if(!S.shelves.some(function(x){return !isSpecial(x.id)})) h+='<div class="empty"><b>📀</b>Start by making your first shelf,<br>like “Shelf 1” or “Rock”.</div>';
   return h;
 }
 
@@ -460,6 +478,7 @@ function mainMenu(){
 }
 function shelfMenu(id){
   var s=shelfById(id);
+  if(isSpecial(id)){var ds=sheet('<h2>'+esc(s.name)+'</h2><p>This is a built-in shelf. It can\'t be renamed or deleted.</p><button class="btn" id="x" style="width:100%">OK</button>');ds.querySelector("#x").onclick=closeSheet;return}
   var d=sheet('<h2>'+esc(s.name)+'</h2><div class="menu"><button class="item" id="rn">✎ Rename shelf</button><button class="item" id="dl" style="color:var(--danger)">🗑 Delete shelf</button></div>');
   d.querySelector("#rn").onclick=function(){askName("Rename shelf",s.name,"Save",function(v){s.name=v;save();render()})};
   d.querySelector("#dl").onclick=function(){
@@ -790,7 +809,7 @@ app.addEventListener("click",function(e){
   var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
   if(a==="open"||a==="gotoCd")go(id);
   else if(a==="back"){var sh=route();if((routeCd()||routeScan())&&sh)location.hash=sh;else go(null)}
-  else if(a==="newShelf")askName("New shelf","","Create",function(v){var s={id:uid(),name:v};S.shelves.push(s);save();go(s.id)});
+  else if(a==="newShelf")askName("New shelf","","Create",function(v){if(SPECIAL.some(function(x){return x.name.toLowerCase()===v.trim().toLowerCase()})){toast("“"+v.trim()+"” is already a built-in shelf");return}var s={id:uid(),name:v};S.shelves.push(s);save();go(s.id)});
   else if(a==="menu")mainMenu();
   else if(a==="display")displaySheet();
   else if(a==="shelfMenu")shelfMenu(route());
@@ -833,7 +852,7 @@ app.addEventListener("change",function(e){if(e.target.id==="coverfile"){var cf=e
   if(e.target.id==="scanfile"){var fl=Array.prototype.slice.call(e.target.files);e.target.value="";processFiles(fl)}});
 window.addEventListener("hashchange",function(){ui.open=null;render();window.scrollTo(0,0)});
 
-loadPrefs();load();loadSyncCfg();render();
+loadPrefs();load();if(ensureSpecial(S))save();loadSyncCfg();render();
 if(sync.cfg){syncNow();document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")syncNow()})}
 if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){});
