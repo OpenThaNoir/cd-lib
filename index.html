@@ -135,6 +135,7 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 
 /* ---------- helpers ---------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function byShelf(a,b){var ya=parseInt(a.year,10)||9999,yb=parseInt(b.year,10)||9999;return cmp(a.artist,b.artist)||ya-yb||cmp(a.title,b.title)}
 function cmp(a,b){return String(a||"").toLowerCase().localeCompare(String(b||"").toLowerCase(),undefined,{numeric:true})}
 function shelfById(id){return S.shelves.find(function(s){return s.id===id})}
 function cdsOn(id){return S.cds.filter(function(c){return c.shelf===id})}
@@ -213,6 +214,25 @@ function loadTracks(c,force){
 var artQ=[],artBusy=false,artDown=false;
 function wantArt(list){list.forEach(function(c){if(!c.art&&!c.artTried&&artQ.indexOf(c.id)<0)artQ.push(c.id)});pumpArt()}
 function paintArt(c){document.querySelectorAll('[data-art="'+c.id+'"]').forEach(function(el){el.outerHTML=thumb(c)})}
+var yearQ=[],yearBusy=false,yearDone=false;
+function wantYears(list){list.forEach(function(c){if(!(parseInt(c.year,10)>0)&&!c.yearTried&&yearQ.indexOf(c.id)<0)yearQ.push(c.id)});pumpYears()}
+async function findYear(c){
+  var d=null;
+  if(c.src&&c.src.i){var j=await paced(function(){return getJSON("https://itunes.apple.com/lookup?id="+c.src.i)});d=j.results&&j.results[0]&&j.results[0].releaseDate}
+  else if(c.src&&c.src.m){var m=await paced(function(){return getJSON("https://musicbrainz.org/ws/2/release-group/"+c.src.m+"?fmt=json",2)});d=m["first-release-date"]}
+  if(!d){var q=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=10&term="+encodeURIComponent(c.artist+" "+c.title))});
+    var t=nrm(tidyTitle(c.title)),a=nrm(c.artist);
+    var h=(q.results||[]).filter(function(x){return nrm(x.artistName)===a&&nrm(tidyTitle(x.collectionName))===t})[0];if(h)d=h.releaseDate}
+  var y=d&&String(d).slice(0,4);return /^\d{4}$/.test(y||"")?y:""}
+function pumpYears(){
+  if(yearBusy||!yearQ.length){if(!yearBusy&&yearDone){yearDone=false;var a=document.activeElement;if(!a||a===document.body)render()}return}
+  var c=S.cds.find(function(x){return x.id===yearQ[0]});yearQ.shift();
+  if(!c||parseInt(c.year,10)>0||c.yearTried){pumpYears();return}
+  yearBusy=true;
+  findYear(c).then(function(y){c.yearTried=Date.now();if(y){c.year=y;yearDone=true}save()})
+   .catch(function(){yearQ=[]})
+   .then(function(){yearBusy=false;pumpYears()});
+}
 function pumpArt(){
   if(artBusy||artDown||!artQ.length)return;
   var c=S.cds.find(function(x){return x.id===artQ[0]});artQ.shift();
@@ -240,7 +260,7 @@ function home(){
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="menu" aria-label="Backup and import">Backup</button></div>';
   if(S.cds.length) h+='<input class="search" id="q" type="search" placeholder="Search all CDs…" value="'+esc(ui.q)+'">';
   if(q){
-    var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+(c.tracks||"")+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
+    var hits=S.cds.filter(function(c){return (c.artist+" "+c.title+" "+(c.tracks||"")+" "+c.year).toLowerCase().indexOf(q)>-1}).sort(byShelf);
     if(!hits.length) h+='<div class="empty"><b>🔍</b>No matches</div>';
     hits.forEach(function(c){var s=shelfById(c.shelf);
       h+='<div class="cd"><button data-a="gotoCd" data-id="'+c.shelf+'">'+thumb(c)+'<span class="tx"><div class="a">'+esc(c.artist)+'</div><div class="t">'+esc(c.title)+'</div><div class="meta">on '+esc(s?s.name:"?")+'</div></span></button></div>'});
@@ -255,7 +275,7 @@ function home(){
 }
 
 function shelfView(id){
-  var s=shelfById(id), list=cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)});
+  var s=shelfById(id), list=cdsOn(id).sort(byShelf);
   var h='<div class="bar"><button class="icon" data-a="back" aria-label="Back to all shelves">←</button>'
    +'<h1>'+esc(s.name)+'<span class="sub">'+list.length+' CD'+(list.length===1?"":"s")+'</span></h1>'
    +'<button class="icon" data-a="display" aria-label="Display settings: text size and colors">Aa</button><button class="icon" data-a="shelfMenu" aria-label="Shelf options">Options</button></div>';
@@ -300,7 +320,7 @@ function render(){
   var dcd=routeCd();
   app.innerHTML=dcd?detailView(dcd):id?shelfView(id):home();
   if(dcd){wantArt([dcd]);if(!dcd.tracks&&!dcd.tracksTried)loadTracks(dcd)}
-  else if(id)wantArt(cdsOn(id).sort(function(a,b){return cmp(a.artist,b.artist)||cmp(a.title,b.title)}));
+  else if(id){wantArt(cdsOn(id).sort(byShelf));wantYears(cdsOn(id))}
   if(!id&&ui.q){var q=document.getElementById("q");if(q){q.focus();q.setSelectionRange(q.value.length,q.value.length)}}
 }
 
@@ -441,7 +461,7 @@ async function findArtist(){
     var n=0;
     list.forEach(function(x){var k=nrm(x.title);if(seen[k])return;seen[k]=1;
       if(S.cds.some(function(c){return nrm(c.artist)===want&&nrm(c.title)===k}))return;
-      n++;addRow({id:uid(),ocr:"Artist lookup",artist:art.name,title:x.title,art:"https://coverartarchive.org/release-group/"+x.id+"/front-250",src:{m:x.id},status:"found",checked:true})});
+      n++;addRow({id:uid(),ocr:"Artist lookup",artist:art.name,title:x.title,art:"https://coverartarchive.org/release-group/"+x.id+"/front-250",src:{m:x.id},year:(x["first-release-date"]||"").slice(0,4),status:"found",checked:true})});
     scan.busy=false;
     setSStat(n?"Found "+n+" studio albums. Uncheck any you don't own, then press Add. Covers will fill in after.":"No studio albums found for that name. Check the spelling.");
   }catch(e){scan.busy=false;setSStat(e.message==="no artist"?"I couldn't find an artist with that exact name. Check the spelling.":"Couldn't look that up right now (the music database may be busy). Wait a minute and try again.")}
@@ -593,7 +613,7 @@ async function tryMatch(text,parts,single){
       }
       if(sc>bs){bs=sc;best=x;sure=full}});
     var pick=null,confident=!single||sure;
-    if(best&&bs>=.6)pick={artist:best.artistName,title:best.collectionName,art:best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:best.collectionId}};
+    if(best&&bs>=.6)pick={artist:best.artistName,title:best.collectionName,art:best.artworkUrl100.replace(/\/\d+x\d+(bb)?\./,"/300x300bb."),src:{i:best.collectionId},year:String(best.releaseDate||"").slice(0,4)};
     else if(parts.length===2){
       // artist part may be misread or clipped ("LAYER" for "SLAYER"): search by the album title alone and check the artist loosely
       var tj=await paced(function(){return getJSON("https://itunes.apple.com/search?media=music&entity=album&limit=25&term="+encodeURIComponent(parts[1]))});
@@ -603,7 +623,7 @@ async function tryMatch(text,parts,single){
     }
     else if(single&&text.split(" ").length>=2){pick=await mbSplit(text);if(pick)confident=true}
     if(pick){
-      r.artist=pick.artist;r.title=tidyTitle(pick.title);r.art=pick.art||"";r.src=pick.src;
+      r.artist=pick.artist;r.year=pick.year||"";r.title=tidyTitle(pick.title);r.art=pick.art||"";r.src=pick.src;
       r.status=confident?"found":"weak";r.checked=confident;
       var same=function(c){return nrm(c.artist)===nrm(r.artist)&&nrm(c.title)===nrm(r.title)};
       if(S.cds.some(same)){r.status="dup";r.checked=false}
@@ -616,7 +636,7 @@ async function tryMatch(text,parts,single){
 function addScanned(){
   var sid=scan.sid,n=0;
   scan.rows.forEach(function(r){if(!r.checked||!r.artist.trim()||!r.title.trim())return;
-    S.cds.push({id:uid(),shelf:sid,artist:r.artist.trim(),title:r.title.trim(),year:"",notes:"",art:r.art||"",artTried:r.art?Date.now():0,src:r.src||null});n++});
+    S.cds.push({id:uid(),shelf:sid,artist:r.artist.trim(),title:r.title.trim(),year:r.year||"",notes:"",art:r.art||"",artTried:r.art?Date.now():0,src:r.src||null});n++});
   save();scan={sid:sid,rows:[],busy:false};
   toast("Added "+n+" CD"+(n===1?"":"s"));location.hash=sid;
 }
