@@ -235,6 +235,7 @@ function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2
 
 /* ---------- helpers ---------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
+function shelvesAZ(list){return (list||S.shelves).slice().sort(function(a,b){return cmp(a.name,b.name)})}
 function byShelf(a,b){var ya=parseInt(a.year,10)||9999,yb=parseInt(b.year,10)||9999;return cmp(a.artist,b.artist)||ya-yb||cmp(a.title,b.title)}
 function cmp(a,b){return String(a||"").toLowerCase().localeCompare(String(b||"").toLowerCase(),undefined,{numeric:true})}
 function shelfById(id){return S.shelves.find(function(s){return s.id===id})}
@@ -370,10 +371,10 @@ function home(){
   var tile=function(s){var l=cdsOn(s.id);
     return '<button class="shelf" data-a="open" data-id="'+s.id+'" aria-label="Shelf '+esc(s.name)+', '+l.length+' CD'+(l.length===1?"":"s")+'"><div class="nm">'+esc(s.name)+'</div><div class="ct">'+l.length+' CD'+(l.length===1?"":"s")+'</div>'+spines(l)+'</button>'};
   h+='<h2 class="grp">My shelves</h2><div class="shelves">';
-  S.shelves.filter(function(s){return !isSpecial(s.id)}).forEach(function(s){h+=tile(s)});
+  shelvesAZ(S.shelves.filter(function(s){return !isSpecial(s.id)})).forEach(function(s){h+=tile(s)});
   h+='<button class="newshelf" data-a="newShelf"><span><b>+</b>New shelf</span></button></div>';
   h+='<h2 class="grp">Want &amp; Search</h2><div class="shelves">';
-  S.shelves.filter(function(s){return isSpecial(s.id)}).forEach(function(s){h+=tile(s)});
+  shelvesAZ(S.shelves.filter(function(s){return isSpecial(s.id)})).forEach(function(s){h+=tile(s)});
   h+='</div>';
   if(!S.shelves.some(function(x){return !isSpecial(x.id)})) h+='<div class="empty"><b>📀</b>Start by making your first shelf,<br>like “Shelf 1” or “Rock”.</div>';
   return h;
@@ -412,7 +413,7 @@ function detailView(c){
    +'<label>Artist<input class="field" data-f="artist" value="'+esc(c.artist)+'"></label>'
    +'<label>Album<input class="field" data-f="title" value="'+esc(c.title)+'"></label>'
    +'<label>Year<input class="field" data-f="year" inputmode="numeric" maxlength="4" value="'+esc(c.year)+'"></label>'
-   +'<label>Shelf<select class="field" data-f="shelf">'+S.shelves.map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
+   +'<label>Shelf<select class="field" data-f="shelf">'+shelvesAZ().map(function(x){return '<option value="'+x.id+'"'+(x.id===c.shelf?" selected":"")+'>'+esc(x.name)+'</option>'}).join("")+'</select></label>'
    +'<label>Tracklist<textarea class="field tracks" data-f="tracks" rows="'+Math.min(30,Math.max(4,(c.tracks||"").split("\n").length+1))+'" placeholder="One track per line">'+esc(c.tracks||"")+'</textarea></label>'
    +'<div class="sub" id="tstat" role="status" aria-live="polite"></div>'
    +'<button class="btn alt" data-a="findTracks" data-id="'+c.id+'">Find tracklist</button>'
@@ -498,7 +499,7 @@ function shelfMenu(id){
     var n=cdsOn(id).length, others=S.shelves.filter(function(x){return x.id!==id});
     if(!n){confirmSheet("Delete this shelf?","It's empty, so nothing else is affected.","Delete",function(){S.shelves=others;save();go(null)});return}
     var d2=sheet('<h2>Delete “'+esc(s.name)+'”?</h2><p>It has '+n+' CD'+(n===1?"":"s")+'. Move them to another shelf first, or delete them with the shelf.</p>'
-      +(others.length?'<select class="field" id="mv">'+others.map(function(x){return '<option value="'+x.id+'">Move to '+esc(x.name)+'</option>'}).join("")+'</select><button class="btn" id="moveDel">Move CDs, then delete shelf</button>':'')
+      +(others.length?'<select class="field" id="mv">'+shelvesAZ(others).map(function(x){return '<option value="'+x.id+'">Move to '+esc(x.name)+'</option>'}).join("")+'</select><button class="btn" id="moveDel">Move CDs, then delete shelf</button>':'')
       +'<button class="btn bad" id="allDel">Delete shelf and its '+n+' CD'+(n===1?"":"s")+'</button><button class="btn alt" id="x">Cancel</button>');
     d2.querySelector("#x").onclick=closeSheet;
     var mv=d2.querySelector("#moveDel");if(mv)mv.onclick=function(){var to=d2.querySelector("#mv").value;S.cds.forEach(function(c){if(c.shelf===id)c.shelf=to});S.shelves=others;save();closeSheet();go(null);toast("Moved "+n+" CD"+(n===1?"":"s"))};
